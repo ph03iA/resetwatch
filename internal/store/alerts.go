@@ -1,0 +1,164 @@
+package store
+
+import (
+	"context"
+	"crypto/sha256"
+	"database/sql"
+	"encoding/hex"
+	"encoding/json"
+	"errors"
+	"time"
+
+	"resetwatch/internal/quota"
+)
+
+func alertID(snapshot quota.Snapshot, window quota.Window, config Config) string {
+	data, _ := json.Marshal([]any{snapshot.Provider, snapshot.AccountID, window.ID, window.ResetsAt.Unix(), config.To, config.From})
+	sum := sha256.Sum256(data)
+	return hex.EncodeToString(sum[:])
+}
+
+func (d *DB) Schedule(ctx context.Context, snapshot quota.Snapshot, config Config, now time.Time) error {
+	if config.To == "" || config.From == "" {
+		return nil
+	}
+	if err := quota.ValidateSnapshot(snapshot); err != nil {
+		return err
+	}
+	tx, err := d.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	if err := cancelReplaced(ctx, tx, snapshot, config, now); err != nil {
+		return err
+	}
+	if err := cancelMissing(ctx, tx, snapshot, now); err != nil {
+		return err
+	}
+	for _, window := range snapshot.Windows {
+		if err := scheduleWindow(ctx, tx, snapshot, window, config, now); err != nil {
+			return err
+		}
+	}
+	return tx.Commit()
+}
+
+func cancelReplaced(ctx context.Context, tx *sql.Tx, snapshot quota.Snapshot, config Config, now time.Time) error {
+	_, err := tx.ExecContext(ctx, `UPDATE alerts SET state='cancelled',updated_at=? WHERE provider=?
+ AND state IN ('pending','retry') AND (account_id<>? OR recipient<>? OR sender<>?)`,
+		now.Unix(), snapshot.Provider, snapshot.AccountID, config.To, config.From)
+	return err
+}
+
+func cancelMissing(ctx context.Context, tx *sql.Tx, snapshot quota.Snapshot, now time.Time) error {
+	ids := make([]string, 0, len(snapshot.Windows))
+	for _, window := range snapshot.Windows {
+		ids = append(ids, window.ID)
+	}
+	data, err := json.Marshal(ids)
+	if err != nil {
+		return err
+	}
+	_, err = tx.ExecContext(ctx, `UPDATE alerts SET state='cancelled',updated_at=?
+ WHERE provider=? AND account_id=? AND reset_at>? AND state IN ('pending','retry')
+ AND window_id NOT IN (SELECT value FROM json_each(?))`, now.Unix(), snapshot.Provider, snapshot.AccountID, now.Unix(), string(data))
+	return err
+}
+
+func scheduleWindow(ctx context.Context, tx *sql.Tx, snapshot quota.Snapshot, window quota.Window, config Config, now time.Time) error {
+	id := alertID(snapshot, window, config)
+	if err := cancelSuperseded(ctx, tx, snapshot, window, id, now); err != nil {
+		return err
+	}
+	if window.UsedPercent < 100 {
+		_, err := tx.ExecContext(ctx, `UPDATE alerts SET state='cancelled',updated_at=? WHERE id=? AND state IN ('pending','retry') AND reset_at>?`, now.Unix(), id, now.Unix())
+		return err
+	}
+	if window.ResetsAt.Before(now.Add(-24 * time.Hour)) {
+		return nil
+	}
+	_, err := tx.ExecContext(ctx, `INSERT INTO alerts
+ (id,provider,account_id,window_id,reset_at,recipient,sender,next_attempt,updated_at)
+ VALUES(?,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET state='pending',updated_at=excluded.updated_at
+ WHERE alerts.state='cancelled' AND alerts.reset_at>?`, id, snapshot.Provider, snapshot.AccountID, window.ID,
+		window.ResetsAt.Unix(), config.To, config.From, window.ResetsAt.Unix(), now.Unix(), now.Unix())
+	return err
+}
+
+func cancelSuperseded(ctx context.Context, tx *sql.Tx, snapshot quota.Snapshot, window quota.Window, id string, now time.Time) error {
+	_, err := tx.ExecContext(ctx, `UPDATE alerts SET state='cancelled',updated_at=?
+ WHERE provider=? AND account_id=? AND window_id=? AND id<>? AND reset_at>?
+ AND state IN ('pending','retry')`, now.Unix(), snapshot.Provider, snapshot.AccountID, window.ID, id, now.Unix())
+	return err
+}
+
+const alertColumns = `id,provider,account_id,window_id,reset_at,recipient,sender,state,attempts,first_attempt,next_attempt,last_error`
+
+type scanner interface{ Scan(...any) error }
+
+func scanAlert(row scanner) (Alert, error) {
+	var alert Alert
+	var reset, first, next int64
+	err := row.Scan(&alert.ID, &alert.Provider, &alert.AccountID, &alert.Window, &reset,
+		&alert.To, &alert.From, &alert.State, &alert.Attempts, &first, &next, &alert.LastError)
+	alert.ResetAt = time.Unix(reset, 0).UTC()
+	alert.NextAttempt = time.Unix(next, 0).UTC()
+	if first != 0 {
+		alert.FirstAttempt = time.Unix(first, 0).UTC()
+	}
+	return alert, err
+}
+
+func (d *DB) Claim(ctx context.Context, now time.Time) (Alert, error) {
+	query := `UPDATE alerts SET state='sending',attempts=attempts+1,lease_until=?,updated_at=?,
+ first_attempt=CASE WHEN first_attempt=0 THEN ? ELSE first_attempt END
+ WHERE id=(SELECT id FROM alerts WHERE
+ ((state IN ('pending','retry') AND next_attempt<=?) OR (state='sending' AND lease_until<=?))
+ ORDER BY next_attempt,id LIMIT 1) RETURNING ` + alertColumns
+	return scanAlert(d.db.QueryRowContext(ctx, query, now.Add(2*time.Minute).Unix(), now.Unix(), now.Unix(), now.Unix(), now.Unix()))
+}
+
+func (d *DB) Finish(ctx context.Context, alert Alert, state, reason string, next time.Time, now time.Time) error {
+	result, err := d.db.ExecContext(ctx, `UPDATE alerts SET state=?,last_error=?,next_attempt=?,lease_until=0,updated_at=?
+ WHERE id=? AND state='sending' AND attempts=?`, state, reason, next.Unix(), now.Unix(), alert.ID, alert.Attempts)
+	if err != nil {
+		return err
+	}
+	count, err := result.RowsAffected()
+	if err == nil && count != 1 {
+		return errors.New("alert delivery lease was lost")
+	}
+	return err
+}
+
+func (d *DB) History(ctx context.Context, limit int) ([]Alert, error) {
+	rows, err := d.db.QueryContext(ctx, "SELECT "+alertColumns+" FROM alerts ORDER BY updated_at DESC,id LIMIT ?", limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	alerts := make([]Alert, 0)
+	for rows.Next() {
+		alert, err := scanAlert(rows)
+		if err != nil {
+			return nil, err
+		}
+		alerts = append(alerts, alert)
+	}
+	return alerts, rows.Err()
+}
+
+func (d *DB) Retry(ctx context.Context, id string, now time.Time) error {
+	result, err := d.db.ExecContext(ctx, `UPDATE alerts SET state='retry',next_attempt=?,updated_at=?,last_error=''
+ WHERE id=? AND state='failed' AND attempts<8 AND first_attempt>? AND reset_at>?`,
+		now.Unix(), now.Unix(), id, now.Add(-23*time.Hour).Unix(), now.Add(-24*time.Hour).Unix())
+	if err != nil {
+		return err
+	}
+	count, err := result.RowsAffected()
+	if err == nil && count != 1 {
+		return errors.New("alert is not failed, not found, exhausted eight attempts, or outside its safe retry window")
+	}
+	return err
+}

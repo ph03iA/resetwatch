@@ -1,0 +1,8 @@
+/bin/
+/coverage.out
+/work/
+*.db
+*.db-shm
+*.db-wal
+.env
+.sites-cache/

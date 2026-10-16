@@ -98,3 +98,18 @@ tabs.forEach((tab) => {
   tab.addEventListener("keydown", handleTabKey);
 });
 document.querySelectorAll("[data-copy]").forEach((button) => button.addEventListener("click", copyCommand));
+
+// Content stays visible without JavaScript; sections only fade in when the observer exists.
+if ("IntersectionObserver" in window) {
+  const observer = new IntersectionObserver((entries) => {
+    entries.filter((entry) => entry.isIntersecting).forEach((entry) => {
+      entry.target.classList.add("is-visible");
+      observer.unobserve(entry.target);
+    });
+  }, { rootMargin: "0px 0px -8% 0px" });
+  document.documentElement.classList.add("js-reveal");
+  document.querySelectorAll("main .section-heading, .lifecycle li, .install-workbook, .notes-layout > *, .footer-heading").forEach((element) => {
+    element.classList.add("reveal");
+    observer.observe(element);
+  });
+}

@@ -140,6 +140,50 @@ kbd { font: 10px var(--mono); color: #d8d6c5; background: #303227; border: 1px s
 .footer-colophon a:hover { color: var(--text); }
 .noscript-note { padding-block: 20px; color: var(--muted); font-size: 13px; line-height: 1.9; }
 .noscript-note a { text-decoration: underline; }
+
+/* Atmosphere: warm light from the top right and a faint film grain. */
+html { scroll-padding-top: 96px; }
+body { background: radial-gradient(1100px 680px at 82% -8%, rgba(200, 147, 112, .11), transparent 62%), radial-gradient(900px 600px at -10% 38%, rgba(120, 124, 100, .06), transparent 60%), var(--bg); background-attachment: fixed; overflow-x: clip; }
+body::before { content: ""; position: fixed; inset: 0; z-index: 20; pointer-events: none; opacity: .045; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E"); }
+
+/* Frosted sticky header with a full-bleed backdrop. */
+.site-header { position: sticky; top: 0; z-index: 10; min-height: 84px; isolation: isolate; }
+.notes-intro { top: 124px; }
+.site-header::before { content: ""; position: absolute; inset: 0 calc(50% - 50vw); z-index: -1; background: rgba(17, 17, 16, .72); backdrop-filter: blur(16px) saturate(140%); -webkit-backdrop-filter: blur(16px) saturate(140%); }
+
+/* Hero: staged entrance, gradient italic, glowing floating envelope. */
+@keyframes rise { from { opacity: 0; transform: translateY(16px); } to { opacity: 1; transform: none; } }
+@keyframes float { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-9px); } }
+.hero-copy > * { animation: rise 900ms cubic-bezier(.22, 1, .36, 1) both; }
+.hero-copy > :nth-child(2) { animation-delay: 80ms; }
+.hero-copy > :nth-child(3) { animation-delay: 160ms; }
+.hero-copy > :nth-child(4) { animation-delay: 240ms; }
+.hero-copy > :nth-child(n+5) { animation-delay: 320ms; }
+h1 em { background: linear-gradient(100deg, #f6e7d8 8%, #e2b48f 55%, #c08a66 95%); -webkit-background-clip: text; background-clip: text; color: transparent; }
+.hero-art { position: relative; animation: rise 1100ms 200ms cubic-bezier(.22, 1, .36, 1) both; }
+.hero-art::before { content: ""; position: absolute; inset: 8% 6% 14%; z-index: -1; background: radial-gradient(closest-side, rgba(214, 160, 120, .22), transparent); filter: blur(30px); }
+.envelope-art { animation: float 7s ease-in-out 1.3s infinite; }
+.button-primary { box-shadow: 0 1px 0 rgba(255, 255, 255, .6) inset, 0 14px 34px -14px rgba(236, 233, 225, .45); }
+.button svg { transition: transform 220ms cubic-bezier(.22, 1, .36, 1); }
+.button:hover svg { transform: translateX(4px); }
+
+/* Process rail and install workbook depth. */
+.lifecycle-node-last { box-shadow: 0 0 0 7px var(--bg), 0 0 18px 2px rgba(200, 147, 112, .55); }
+.install-section { background: linear-gradient(180deg, #181915, #1b1c17 40%, #181915); }
+.install-workbook { border-radius: 14px; background: linear-gradient(180deg, #21221c, #1c1d18); box-shadow: 0 1px 0 rgba(255, 255, 240, .09) inset, 0 50px 90px -50px rgba(0, 0, 0, .75), 0 0 0 1px rgba(0, 0, 0, .25); }
+.code-block { border-radius: 9px; background: linear-gradient(180deg, #141610, #10120d); }
+.step-index { text-shadow: 0 0 24px rgba(200, 147, 112, .35); }
+.download-link { border-radius: 999px; padding-inline: 18px; }
+
+/* Readable small print. */
+.step-aside, .watch-note, .release-details p, .sender-note, .footer-colophon, .lifecycle-source, .code-header, .copy-button, .header-note { font-size: 12px; }
+
+/* Scroll reveal, enabled by app.js only when IntersectionObserver exists. */
+.js-reveal .reveal { opacity: 0; transform: translateY(22px); transition: opacity 900ms cubic-bezier(.22, 1, .36, 1), transform 900ms cubic-bezier(.22, 1, .36, 1); }
+.js-reveal .reveal.is-visible { opacity: 1; transform: none; }
+.js-reveal .lifecycle li:nth-child(2) { transition-delay: 90ms; }
+.js-reveal .lifecycle li:nth-child(3) { transition-delay: 180ms; }
+.js-reveal .lifecycle li:nth-child(4) { transition-delay: 270ms; }
 @media (min-width: 1440px) {
   .hero { padding-block: 90px 100px; }
 }
@@ -270,4 +314,5 @@ kbd { font: 10px var(--mono); color: #d8d6c5; background: #303227; border: 1px s
 @media (prefers-reduced-motion: reduce) {
   html { scroll-behavior: auto; }
   *, *::before, *::after { transition: none !important; animation: none !important; }
+  .js-reveal .reveal { opacity: 1; transform: none; }
 }

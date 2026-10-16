@@ -1,0 +1,293 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>ResetWatch launch film</title>
+<style>
+@font-face{font-family:Manrope;src:url(fonts/manrope.ttf);font-weight:200 800}
+@font-face{font-family:"Instrument Serif";src:url(fonts/instrument-serif.ttf)}
+@font-face{font-family:"Instrument Serif";font-style:italic;src:url(fonts/instrument-serif-italic.ttf)}
+@font-face{font-family:JBM;src:url(fonts/jetbrains-mono-latin-400-normal.woff2);font-weight:400}
+@font-face{font-family:JBM;src:url(fonts/jetbrains-mono-latin-500-normal.woff2);font-weight:500}
+:root{--bg:#111110;--surface:#171715;--text:#ece9e1;--muted:#a6a39a;--quiet:#85837b;--line:#32322d;--accent:#c89370;
+--sans:Manrope,sans-serif;--serif:"Instrument Serif",Georgia,serif;--mono:JBM,"DejaVu Sans Mono",monospace}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{width:1920px;height:1080px;overflow:hidden;background:var(--bg);color:var(--text);font-family:var(--sans);-webkit-font-smoothing:antialiased}
+#stage{position:relative;width:1920px;height:1080px;overflow:hidden;background:radial-gradient(ellipse 70% 60% at 50% 42%,#1b1b19 0%,#111110 60%,#0b0b0a 100%)}
+.scene{position:absolute;inset:0;opacity:0;will-change:opacity,transform}
+.center{display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center}
+.label{font-family:var(--mono);font-size:22px;letter-spacing:.18em;color:var(--quiet);text-transform:uppercase}
+.label b{color:var(--accent);font-weight:500}
+.serif{font-family:var(--serif);font-weight:400;letter-spacing:-.02em;line-height:.95}
+em{font-family:var(--serif);font-style:italic}
+.dot{display:inline-block;width:10px;height:10px;border-radius:50%;background:var(--accent);margin-right:16px;vertical-align:middle}
+
+/* S1 */
+#s1 .pct{font-size:300px;margin-top:30px;font-variant-numeric:tabular-nums}
+#s1 .pct span{font-size:120px;color:var(--quiet);margin-left:10px}
+#s1 .track{width:1040px;height:10px;background:#24241f;border-radius:6px;margin-top:40px;overflow:hidden}
+#s1 .fill{height:100%;width:0;background:var(--muted);border-radius:6px}
+#s1 .msg{margin-top:44px;font-size:40px;color:var(--muted);height:50px}
+/* S2 */
+#s2 .small{font-size:40px;color:var(--muted);font-variant-numeric:tabular-nums}
+#s2 .big{font-size:190px;margin-top:26px}
+#s2 .ghost{position:absolute;font-family:var(--mono);font-size:26px;color:#3d3d37;letter-spacing:.06em}
+/* S3 */
+#s3 .mark{width:150px;height:150px}
+#s3 .word{font-size:64px;font-weight:600;letter-spacing:-.04em;margin-top:26px}
+#s3 h1{font-size:170px;margin-top:56px}
+#s3 h1 em{color:var(--accent)}
+/* S4 terminal */
+#s4 .cap{position:absolute;left:140px;top:340px;width:520px}
+#s4 .cap h2{font-size:120px}
+#s4 .cap h2 em{color:var(--accent)}
+#s4 .cap p{margin-top:36px;font-size:30px;color:var(--muted);line-height:1.5}
+.term{position:absolute;left:740px;top:205px;width:1060px;height:670px;background:var(--surface);border:1px solid var(--line);border-radius:18px;box-shadow:0 40px 120px rgba(0,0,0,.55);overflow:hidden}
+.term .bar{height:58px;border-bottom:1px solid var(--line);display:flex;align-items:center;padding:0 24px;gap:10px}
+.term .bar i{width:13px;height:13px;border-radius:50%;background:#2c2c28}
+.term .bar span{margin-left:auto;margin-right:auto;font-family:var(--mono);font-size:17px;color:var(--quiet);transform:translateX(-30px)}
+.term pre{font-family:var(--mono);font-size:21px;line-height:1.62;padding:30px 36px;color:var(--text);white-space:pre}
+.term .p{color:var(--accent)}
+.term .o{color:var(--muted)}
+.term .q{color:var(--quiet)}
+.term .hd{color:var(--text);font-weight:500;letter-spacing:.04em}
+.blk{display:inline-block;width:12.6px;height:20px;vertical-align:-3px}
+.blk.on{background:var(--accent)}
+.blk.mid{background:#8f8c82}
+.blk.off{background:#2e2e29}
+.rule{display:inline-block;width:690px;height:1px;background:var(--line);vertical-align:middle}
+.cursor{display:inline-block;width:12px;height:24px;background:var(--text);vertical-align:-5px}
+/* S5 */
+#s5 .left{position:absolute;left:170px;top:270px;width:720px}
+#s5 .num{font-size:330px;font-variant-numeric:tabular-nums;line-height:.85;display:flex;align-items:baseline;gap:24px}
+#s5 .num small{font-family:var(--sans);font-size:44px;color:var(--quiet);letter-spacing:0}
+#s5 .phase{margin-top:50px;font-size:38px;line-height:1.45;color:var(--muted);height:120px;position:relative}
+#s5 .phase div{position:absolute;left:0;top:0}
+#s5 .art{position:absolute;left:900px;top:150px;width:900px;height:680px}
+#s5 .status{position:absolute;left:170px;top:800px;font-size:26px;color:var(--quiet);font-family:var(--mono);letter-spacing:.05em}
+/* S6 */
+#s6 .head{position:absolute;left:170px;top:150px}
+#s6 .head h2{font-size:130px}
+#s6 .head h2 em{color:var(--accent)}
+.row{position:absolute;left:170px;width:1580px;height:220px;border-top:1px solid var(--line);display:grid;grid-template-columns:380px 1fr 120px;align-items:center;gap:40px}
+.row .t{font-size:30px;color:var(--muted);display:flex;align-items:center}
+.row .ind{width:16px;height:16px;border-radius:50%;border:1.5px solid var(--accent);margin-right:20px}
+.row .ind.f{background:var(--accent)}
+.row .meta{font-family:var(--mono);font-size:19px;color:var(--quiet);letter-spacing:.06em}
+.row h3{font-size:58px;font-family:var(--serif);font-weight:400;margin-top:10px;letter-spacing:-.01em}
+.row svg{width:96px;height:96px;color:var(--muted)}
+/* S7 */
+#s7 .grid{display:grid;grid-template-columns:repeat(4,360px);gap:28px}
+.cell{border-top:1px solid var(--accent);padding-top:30px;text-align:left}
+.cell .k{font-family:var(--mono);font-size:19px;color:var(--quiet);letter-spacing:.12em}
+.cell h4{font-family:var(--serif);font-weight:400;font-size:62px;margin-top:22px;line-height:1}
+.cell p{font-size:24px;color:var(--muted);margin-top:22px;line-height:1.45}
+#s7 h2{font-size:110px;margin-bottom:100px}
+#s7 h2 em{color:var(--accent)}
+/* S8 */
+#s8 .mark{width:110px;height:110px}
+#s8 .word{font-size:120px;font-weight:600;letter-spacing:-.05em;margin-top:28px}
+#s8 .word span{color:var(--accent)}
+#s8 .tag{font-size:72px;margin-top:30px;color:var(--muted)}
+#s8 .foot{margin-top:70px;font-family:var(--mono);font-size:22px;color:var(--quiet);letter-spacing:.12em}
+#grain{position:absolute;inset:0;width:1920px;height:1080px;pointer-events:none;opacity:.07;mix-blend-mode:screen}
+</style></head>
+<body><div id="stage">
+
+<section class="scene center" id="s1">
+  <div class="label"><b>Codex</b> / Five-hour window</div>
+  <div class="pct serif"><b id="pct" style="font-weight:400">62</b><span>%</span></div>
+  <div class="track"><div class="fill" id="fill"></div></div>
+  <div class="msg" id="s1msg">Limit reached.</div>
+</section>
+
+<section class="scene center" id="s2">
+  <div class="small" id="s2small">Next window in 4h 12m.</div>
+  <div class="big serif">So you <em>keep checking.</em></div>
+</section>
+
+<section class="scene center" id="s3">
+  <svg class="mark" viewBox="0 0 28 28" fill="none"><path id="markpath" d="M22 9a9 9 0 1 0 1 5M22 3v7h-7M14 8v6l3 2" stroke="#c89370" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round" pathLength="100" stroke-dasharray="100" stroke-dashoffset="100"/></svg>
+  <div class="word" id="s3word">resetwatch</div>
+  <h1 class="serif" id="s3h1">Your next reset.<br><em>In your inbox.</em></h1>
+</section>
+
+<section class="scene" id="s4">
+  <div class="cap"><h2 class="serif">Set it up.<br><em>Step away.</em></h2><p>A small Go CLI that runs on your machine. Your sign-in stays with Codex.</p></div>
+  <div class="term"><div class="bar"><i></i><i></i><i></i><span>~ / resetwatch</span></div><pre id="term"></pre></div>
+</section>
+
+<section class="scene" id="s5">
+  <div class="left">
+    <div class="label"><b>Codex</b> / Five-hour window</div>
+    <div class="num serif" style="margin-top:40px"><span id="cd">134</span><small>min</small></div>
+    <div class="phase"><div id="ph1">Until the next window.<br>Your reminder is armed.</div><div id="ph2" style="opacity:0">The reset time has arrived.<br><span style="color:var(--text)">Email on its way.</span></div></div>
+  </div>
+  <svg class="art" viewBox="0 0 560 420" fill="none">
+    <defs>
+      <linearGradient id="env-back" x1="98" y1="112" x2="460" y2="352" gradientUnits="userSpaceOnUse"><stop stop-color="#4a4844"/><stop offset=".4" stop-color="#2d2d2a"/><stop offset="1" stop-color="#1b1c1a"/></linearGradient>
+      <linearGradient id="env-paper" x1="270" y1="60" x2="270" y2="310" gradientUnits="userSpaceOnUse"><stop stop-color="#f3f0e8"/><stop offset=".5" stop-color="#d2cfc5"/><stop offset="1" stop-color="#a09f96"/></linearGradient>
+      <linearGradient id="env-left" x1="99" y1="144" x2="278" y2="308" gradientUnits="userSpaceOnUse"><stop stop-color="#41413b"/><stop offset="1" stop-color="#252722"/></linearGradient>
+      <linearGradient id="env-right" x1="458" y1="147" x2="279" y2="313" gradientUnits="userSpaceOnUse"><stop stop-color="#33352e"/><stop offset="1" stop-color="#1e211b"/></linearGradient>
+      <linearGradient id="env-front" x1="276" y1="243" x2="276" y2="355" gradientUnits="userSpaceOnUse"><stop stop-color="#42443b"/><stop offset=".4" stop-color="#33352d"/><stop offset="1" stop-color="#22251e"/></linearGradient>
+      <linearGradient id="env-rim" x1="97" y1="120" x2="458" y2="350" gradientUnits="userSpaceOnUse"><stop stop-color="#aeaa96"/><stop offset=".35" stop-color="#56584a"/><stop offset=".7" stop-color="#32352a"/><stop offset="1" stop-color="#72745d"/></linearGradient>
+      <linearGradient id="env-seal" x1="258" y1="278" x2="294" y2="314" gradientUnits="userSpaceOnUse"><stop stop-color="#e0b28d"/><stop offset=".42" stop-color="#a97550"/><stop offset="1" stop-color="#654831"/></linearGradient>
+      <filter id="env-shadow" x="-30%" y="-200%" width="160%" height="500%"><feGaussianBlur stdDeviation="10"/></filter>
+      <clipPath id="letterclip"><rect x="0" y="-400" width="560" height="740"/></clipPath>
+    </defs>
+    <ellipse cx="287" cy="373" rx="170" ry="11" fill="#050604" opacity=".85" filter="url(#env-shadow)"/>
+    <g id="envbody" transform="rotate(-8 280 225)">
+      <rect x="96" y="119" width="368" height="232" rx="11" fill="url(#env-back)" stroke="url(#env-rim)" stroke-width="1.3"/>
+      <path d="M103 127h354v213H103z" fill="#171a15"/>
+      <g id="letter">
+        <rect x="120" y="72" width="320" height="250" rx="6" fill="url(#env-paper)"/>
+        <path d="M126 73h308" stroke="#fffdf5" stroke-opacity=".8"/>
+        <g fill="#45463e" font-family="Manrope,sans-serif"><text x="145" y="104" font-size="10" letter-spacing="1.8">RESETWATCH</text><text x="145" y="143" font-size="18" font-weight="600" letter-spacing="-.7">Your reset time has arrived.</text><text x="145" y="165" font-size="10">Codex · Five-hour window</text></g>
+        <path d="M145 185h220m-220 12h183m-183 12h198" stroke="#898b7e" stroke-width="2.5" stroke-opacity=".45"/>
+        <path d="M405 91h12v12h-12z" stroke="#8b8c7f" stroke-width=".7"/><path d="m407 94 4 3 4-3" stroke="#8b8c7f" stroke-width=".7"/>
+      </g>
+      <path d="M97 144 269 255q11 7 22 0l172-111v195q0 12-12 12H109q-12 0-12-12z" fill="url(#env-back)"/>
+      <path d="m97 144 179 116-179 82z" fill="url(#env-left)"/>
+      <path d="m463 144-179 116 179 82z" fill="url(#env-right)"/>
+      <path d="m99 341 164-96q17-10 34 0l164 96q-2 10-13 10H112q-11 0-13-10" fill="url(#env-front)"/>
+      <path d="m100 342 163-97q17-10 34 0l163 97" stroke="#707260" stroke-opacity=".55" stroke-width=".8"/>
+      <path d="M108 349h343" stroke="#575b47" stroke-opacity=".65"/>
+      <g id="seal"><circle cx="280" cy="296" r="22" fill="#10150f" fill-opacity=".5"/><circle cx="280" cy="294" r="18.5" fill="url(#env-seal)" stroke="#ca9e77" stroke-opacity=".6"/><circle cx="280" cy="294" r="14" stroke="#664b34" stroke-opacity=".7" stroke-width=".6"/><path d="M288 291a8 8 0 1 0 0 6m0-12v7h-7m-1-3v6l3 2" stroke="#f4d7b2" stroke-width="1.15" stroke-linecap="round" stroke-linejoin="round"/></g>
+    </g>
+    <path d="M114 398h328" stroke="#5b5c50" stroke-opacity=".5" stroke-dasharray="2 8"/>
+    <circle id="routeA" cx="114" cy="398" r="3" fill="#c89370"/><circle cx="442" cy="398" r="3" fill="#9c9e8d"/>
+    <circle id="traveller" cx="114" cy="398" r="5" fill="#c89370" opacity="0"/>
+  </svg>
+  <div class="status" id="s5status">● ALERT SAVED LOCALLY · SURVIVES RESTARTS</div>
+</section>
+
+<section class="scene" id="s6">
+  <div class="head"><div class="label" style="margin-bottom:30px"><b>The email</b> / says what it knows</div><h2 class="serif">A reset time is not<br><em>a guarantee.</em></h2></div>
+  <div class="row" id="r1" style="top:560px"><div class="t"><span class="ind"></span>Expected reset</div><div><div class="meta">FRESH DATA UNAVAILABLE, OR ANOTHER WINDOW STILL EXHAUSTED</div><h3>The recorded reset time has arrived.</h3></div><svg viewBox="0 0 48 48" fill="none"><circle cx="24" cy="24" r="19" stroke="currentColor" stroke-width="1"/><path d="M24 12v13l8 5" stroke="currentColor" stroke-width="1.2"/></svg></div>
+  <div class="row" id="r2" style="top:780px"><div class="t"><span class="ind f"></span>Confirmed reset</div><div><div class="meta">FRESH CHECK AT THE RESET TIME, EVERY WINDOW</div><h3>Fresh data confirms available allowance.</h3></div><svg viewBox="0 0 48 48" fill="none" style="color:var(--accent)"><circle cx="24" cy="24" r="19" stroke="currentColor" stroke-width="1"/><path d="m15 24 6 6 13-13" stroke="currentColor" stroke-width="1.2"/></svg></div>
+</section>
+
+<section class="scene center" id="s7">
+  <h2 class="serif">Small tool. <em>Clear boundaries.</em></h2>
+  <div class="grid">
+    <div class="cell" id="c1"><div class="k">LOCAL</div><h4>Runs on your machine.</h4><p>No hosted watcher. No inference requests.</p></div>
+    <div class="cell" id="c2"><div class="k">DURABLE</div><h4>Survives restarts.</h4><p>Alerts are saved in local SQLite and resume.</p></div>
+    <div class="cell" id="c3"><div class="k">YOUR INBOX</div><h4>Email via Resend.</h4><p>Your key stays in the environment.</p></div>
+    <div class="cell" id="c4"><div class="k">OPEN</div><h4>MIT licensed.</h4><p>Written in Go. Read every line.</p></div>
+  </div>
+</section>
+
+<section class="scene center" id="s8">
+  <svg class="mark" viewBox="0 0 28 28" fill="none"><path d="M22 9a9 9 0 1 0 1 5M22 3v7h-7M14 8v6l3 2" stroke="#c89370" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+  <div class="word">resetwatch<span>.</span></div>
+  <div class="tag serif"><em>A little time back.</em></div>
+  <div class="foot">v0.1.0 · WINDOWS · MACOS · LINUX · OPEN SOURCE</div>
+</section>
+
+<canvas id="grain" width="960" height="540"></canvas>
+</div>
+<script>
+const $=id=>document.getElementById(id);
+const clamp=(x,a=0,b=1)=>Math.min(b,Math.max(a,x));
+const P=(t,a,b)=>clamp((t-a)/(b-a));
+const eo=x=>1-Math.pow(1-x,3);
+const eio=x=>x<.5?4*x*x*x:1-Math.pow(-2*x+2,3)/2;
+const win=(t,a,b,fi=.6,fo=.6)=>Math.min(eo(P(t,a,a+fi)),1-P(t,b-fo,b));
+const lerp=(a,b,x)=>a+(b-a)*x;
+function rise(el,t,start,d=.9,dist=40){const p=eo(P(t,start,start+d));el.style.opacity=p;el.style.transform=`translateY(${(1-p)*dist}px)`;}
+
+// grain: seeded noise, fixed set of frames
+const g=$('grain'),gc=g.getContext('2d');let seed=7;const rnd=()=>(seed=(seed*16807)%2147483647)/2147483647;
+const grains=[];for(let k=0;k<6;k++){const im=gc.createImageData(960,540);for(let i=0;i<im.data.length;i+=4){const v=rnd()*255;im.data[i]=im.data[i+1]=im.data[i+2]=v;im.data[i+3]=255}grains.push(im)}
+
+// terminal script: [time, html]  (typed commands get char reveal)
+const T0=13.0;
+const lines=[
+ {t:0.3,cmd:'resetwatch connect codex'},
+ {t:1.5,out:'<span class="o">Connected to Codex. Account credentials remain with Codex.</span>'},
+ {t:2.0,cmd:"resetwatch notify --email you@example.com --from 'ResetWatch &lt;onboarding@resend.dev&gt;'",len:72},
+ {t:3.6,out:'<span class="o">Email settings saved. Set RESEND_API_KEY, then run resetwatch watch.</span>'},
+ {t:4.1,cmd:'resetwatch watch'},
+ {t:5.0,out:'<span class="o">Watching Codex reset windows. Ctrl+C stops safely.</span>'},
+ {t:5.6,out:''},
+ {t:5.7,out:'<span class="hd">  RESETWATCH / QUOTA MONITOR</span>'},
+ {t:5.8,out:'  <span class="rule"></span>'},
+ {t:5.9,out:'<span class="q">  WINDOW            USED               NEXT RESET</span>'},
+ {t:6.1,out:'  codex:primary     '+'<span class="blk on"></span>'.repeat(10)+' <span class="p">100.0%</span>   2h14m0s'},
+ {t:6.3,out:'  codex:secondary   '+'<span class="blk mid"></span>'.repeat(3)+'<span class="blk off"></span>'.repeat(7)+'  36.0%   71h59m59s'},
+ {t:6.5,out:'  <span class="rule"></span>'},
+];
+function plain(s){const d=document.createElement('div');d.innerHTML=s;return d.textContent}
+function termAt(lt){
+  let html='';
+  for(const L of lines){
+    if(lt<L.t) break;
+    if(L.cmd!==undefined){
+      const full=plain(L.cmd);const dur=(L.len||full.length)>40?1.1:0.7;
+      const n=Math.floor(clamp((lt-L.t)/dur)*full.length);
+      const shown=full.slice(0,n).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+      const typing=n<full.length;
+      // wrap long command
+      let s=shown; if(full.length>60){const cut=full.indexOf('--from');const sc=s.length>cut? s.slice(0,cut)+'\\\n    '+s.slice(cut):s; s=sc;}
+      html+='<span class="p">$</span> '+s+(typing?'<span class="cursor"></span>':'')+'\n';
+    } else html+=L.out+'\n';
+  }
+  const last=lines[lines.length-1];
+  const idle=lt>=last.t||(()=>{for(const L of lines){if(L.cmd&&lt>=L.t&&lt<L.t+1.2)return false}return true})();
+  if(lt>=last.t) html+=((Math.floor(lt*2)%2)?'':'<span class="cursor"></span>');
+  return html;
+}
+
+function seek(t){
+  // grain
+  gc.putImageData(grains[Math.floor(t*12)%grains.length],0,0);
+  // S1 0-4.4
+  const s1=$('s1');s1.style.opacity=win(t,0,4.4,.5,.6);
+  const fp=eio(P(t,.3,2.2));const pct=Math.round(lerp(62,100,fp));
+  $('pct').textContent=pct;$('fill').style.width=(lerp(62,100,fp))+'%';
+  $('fill').style.background=pct>=100?'#c89370':'#a6a39a';
+  const m=$('s1msg');m.style.opacity=eo(P(t,2.4,3.0));m.style.color='#ece9e1';
+  s1.style.transform=`scale(${lerp(1,1.03,P(t,0,4.4))})`;
+  // S2 4.4-8.4
+  const s2=$('s2');s2.style.opacity=win(t,4.4,8.4,.6,.6);
+  const secs=4*3600+12*60+7-Math.floor((t-4.4)*1);
+  const h=Math.floor(secs/3600),mm=Math.floor(secs%3600/60),ss=secs%60;
+  $('s2small').textContent=`Next window in ${h}:${String(mm).padStart(2,'0')}:${String(ss).padStart(2,'0')}.`;
+  rise(s2.querySelector('.big'),t,4.9,1.0,30);
+  // S3 8.4-13
+  const s3=$('s3');s3.style.opacity=win(t,8.4,13.0,.4,.6);
+  $('markpath').setAttribute('stroke-dashoffset',100*(1-eio(P(t,8.6,9.8))));
+  rise($('s3word'),t,9.3,.8,20);
+  rise($('s3h1'),t,10.0,1.0,40);
+  // S4 13-21.6
+  const s4=$('s4');s4.style.opacity=win(t,13.0,21.6,.6,.6);
+  rise(s4.querySelector('.cap'),t,13.1,.9,30);
+  const term=s4.querySelector('.term');const tp=eo(P(t,13.2,14.1));term.style.opacity=tp;term.style.transform=`translateY(${(1-tp)*40}px)`;
+  $('term').innerHTML=termAt(t-T0);
+  // S5 21.6-28.6
+  const s5=$('s5');s5.style.opacity=win(t,21.6,28.6,.6,.6);
+  const cdp=eio(P(t,22.2,25.0));const minutes=Math.round(lerp(134,0,cdp));$('cd').textContent=minutes;
+  const arrived=t>=25.0;
+  const ap=eo(P(t,25.0,25.8));
+  $('ph1').style.opacity=1-ap;$('ph2').style.opacity=ap;
+  $('letter').setAttribute('transform',`translate(0 ${-58*eo(P(t,25.2,26.4))})`);
+  $('cd').style.color=arrived?'#c89370':'#ece9e1';
+  const tr=$('traveller');const trp=eio(P(t,25.4,26.8));tr.setAttribute('cx',lerp(114,442,trp));tr.setAttribute('opacity',trp>0&&trp<1?1:0);
+  $('envbody').setAttribute('transform',`rotate(${-8+3*eo(P(t,25.0,26.4))} 280 225) translate(0 ${-6*Math.sin(Math.PI*P(t,25.0,26.0))})`);
+  $('s5status').textContent=arrived?'● RESET EMAIL ACCEPTED BY EMAIL PROVIDER':'● ALERT SAVED LOCALLY · SURVIVES RESTARTS';
+  $('s5status').style.color=arrived?'#c89370':'#85837b';
+  s5.querySelector('.art').style.transform=`scale(${lerp(.98,1.02,P(t,21.6,28.6))})`;
+  // S6 28.6-35
+  const s6=$('s6');s6.style.opacity=win(t,28.6,35.0,.6,.6);
+  rise(s6.querySelector('.head'),t,28.7,.9,30);
+  rise($('r1'),t,29.6,.9,30);rise($('r2'),t,30.5,.9,30);
+  // S7 35-40.4
+  const s7=$('s7');s7.style.opacity=win(t,35.0,40.4,.6,.6);
+  rise(s7.querySelector('h2'),t,35.1,.9,30);
+  ['c1','c2','c3','c4'].forEach((id,i)=>rise($(id),t,35.8+i*.35,.8,40));
+  // S8 40.4-46
+  const s8=$('s8');s8.style.opacity=Math.min(eo(P(t,40.4,41.2)),1-P(t,45.4,46.0));
+  rise(s8.querySelector('.mark'),t,40.5,.9,20);rise(s8.querySelector('.word'),t,40.8,.9,20);
+  rise(s8.querySelector('.tag'),t,41.5,1.0,20);rise(s8.querySelector('.foot'),t,42.3,1.0,10);
+}
+window.DURATION=46;
+document.fonts.ready.then(()=>{seek(0);window.READY=true});
+</script>
+</body></html>

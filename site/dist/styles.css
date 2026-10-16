@@ -78,11 +78,7 @@ h2 em { font-family: var(--serif); font-weight: 400; font-size: 1.22em; line-hei
 .install-layout { padding-block: 90px 84px; }
 .install-workbook { margin-top: 58px; border: 1px solid #3c3e33; border-radius: 8px; background: #1d1e19; box-shadow: 0 1px 0 #555647 inset; padding: 0 34px; }
 .install-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 24px; min-height: 88px; border-bottom: 1px solid #3c3e33; }
-.os-tabs { display: flex; align-self: stretch; gap: 32px; }
-.os-tabs button { position: relative; padding: 5px 2px 0; font-size: 14px; color: #aaa99e; background: transparent; transition: color 200ms ease; }
-.os-tabs button::after { content: ""; position: absolute; bottom: -1px; left: 0; right: 0; height: 2px; background: var(--accent); transform: scaleX(0); transform-origin: left; transition: transform 250ms cubic-bezier(.22,1,.36,1); }
-.os-tabs button:hover, .os-tabs button[aria-selected="true"] { color: var(--text); }
-.os-tabs button[aria-selected="true"]::after { transform: scaleX(1); }
+.install-platforms { font-size: 13px; color: var(--muted); }
 .download-link { display: inline-flex; align-items: center; gap: 12px; color: var(--text); background: #36382d; border: 1px solid #515342; border-radius: 4px; padding: 11px 15px; font-size: 12px; white-space: nowrap; transition: background 200ms ease; }
 .download-link:hover { background: #474a3a; }
 .download-link:active { transform: scale(.98); }
@@ -113,8 +109,9 @@ kbd { font: 10px var(--mono); color: #d8d6c5; background: #303227; border: 1px s
 .release-links a:hover { color: var(--accent); }
 .release-details p { color: #99998c; font-size: 11px; line-height: 1.8; margin-top: 9px; }
 .sender-note { font-size: 11px; line-height: 1.9; color: #aaa99b; border-top: 1px solid #3c3e33; padding-top: 16px; }
-.copy-status { min-height: 18px; font-size: 12px; color: #d8b48d; margin: 9px 0 16px; line-height: 1.8; }
-.copy-status[data-quiet] { color: transparent; user-select: none; }
+/* Zero height keeps the layout still while screen readers hear updates; only errors take space. */
+.copy-status { height: 0; overflow: hidden; font-size: 12px; color: #d8b48d; margin: 9px 0 16px; line-height: 1.8; }
+.copy-status[data-error] { height: auto; }
 .notes-section { border-top: 1px solid var(--line); }
 .notes-layout { display: grid; grid-template-columns: minmax(0, .8fr) minmax(0, 1.2fr); column-gap: 100px; padding-block: 90px 105px; }
 .notes-intro { align-self: start; position: sticky; top: 40px; }
@@ -139,8 +136,6 @@ kbd { font: 10px var(--mono); color: #d8d6c5; background: #303227; border: 1px s
 .footer-colophon { display: flex; justify-content: space-between; align-items: baseline; gap: 24px; color: var(--quiet); font-size: 11px; margin-top: 34px; }
 .footer-colophon a { color: var(--muted); }
 .footer-colophon a:hover { color: var(--text); }
-.noscript-note { padding-block: 20px; color: var(--muted); font-size: 13px; line-height: 1.9; }
-.noscript-note a { text-decoration: underline; }
 
 /* Atmosphere: warm light from the top right and a faint film grain. */
 html { scroll-padding-top: 96px; }
@@ -264,8 +259,6 @@ h1 em { background: linear-gradient(100deg, #f6e7d8 8%, #e2b48f 55%, #c08a66 95%
   .install-layout { padding-block: 55px 52px; }
   .install-workbook { margin-top: 35px; padding-inline: 18px; border-radius: 6px; }
   .install-toolbar { display: block; padding-bottom: 19px; }
-  .os-tabs { width: 100%; justify-content: space-between; gap: 15px; border-bottom: 1px solid #3c3e33; height: 65px; }
-  .os-tabs button { font-size: 13px; padding-inline: 3px; }
   .download-link { margin-top: 19px; font-size: 11px; padding: 10px 12px; }
   .install-step { grid-template-columns: 28px minmax(0, 1fr); gap: 15px 13px; padding-block: 27px; }
   .step-index { font-size: 28px; }

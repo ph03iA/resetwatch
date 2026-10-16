@@ -9,4 +9,5 @@
 !.env.example
 *.[eE][nN][vV]
 .sites-cache/
-launch
+launch/resetwatch
+/resetwatch.exe

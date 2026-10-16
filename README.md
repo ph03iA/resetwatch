@@ -8,28 +8,21 @@ A local CLI that emails you when an exhausted Codex usage window reaches its res
 
 The installation page is local in `site/dist/`. From the project root, run `node tools/serve.mjs` and open [the local page](http://127.0.0.1:4173). This project has not been published.
 
-There are no prebuilt downloads. Install Git and Go 1.27.2 or newer, then clone and build:
+There are no prebuilt downloads. Install Git and Go 1.27.2 or newer, then clone and build. The same commands work in PowerShell, macOS Terminal and Linux shells; on Windows, Go names the file `resetwatch.exe` and PowerShell runs it as `./resetwatch`:
 
 ```sh
 git clone https://github.com/ph03iA/resetwatch.git
 cd resetwatch
-go build -o resetwatch ./cmd/resetwatch
+go build ./cmd/resetwatch
 ./resetwatch version
-```
-
-On Windows PowerShell, build `resetwatch.exe` instead and run it as `.\resetwatch.exe`:
-
-```powershell
-go build -o resetwatch.exe ./cmd/resetwatch
-.\resetwatch.exe version
 ```
 
 To use `resetwatch` from any directory, run `go install ./cmd/resetwatch` instead. Go installs to `GOBIN`, or to `GOPATH/bin` when `GOBIN` is unset; add that directory to your `PATH` if needed. The module path is local (`resetwatch`), so `go install github.com/...@latest` does not work.
 
 To test email delivery, run this from the cloned folder:
 
-```powershell
-.\resetwatch.exe test-email --email 'YOUR_RESEND_ACCOUNT_EMAIL'
+```sh
+./resetwatch test-email --email 'YOUR_RESEND_ACCOUNT_EMAIL'
 ```
 
 Before testing, create `.env` from `.env.example` in the project folder if it does not already exist, and paste your Resend key after `RESEND_API_KEY=`. Keep the command's working directory in that folder. Replace the recipient with your own value. This sends one email labeled **TEST**, without connecting to Codex or opening the state database. The default sender is `ResetWatch <onboarding@resend.dev>`, which can only send to your own Resend account email unless you use a verified sender domain. Provider acceptance does not guarantee inbox receipt. There are no automatic retries; rerunning the command sends another test.

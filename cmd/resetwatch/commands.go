@@ -28,6 +28,7 @@ func (a *application) connect(ctx context.Context, args []string) error {
 		return err
 	}
 	fmt.Fprintln(a.out, "Connected to Codex. Account credentials remain with Codex.")
+	fmt.Fprintln(a.out, "Restart any running ResetWatch watcher to use this connection and executable path.")
 	return nil
 }
 
@@ -56,12 +57,7 @@ func (a *application) connectCodex(ctx context.Context, binary string) error {
 	if _, err := engine.Observe(ctx, config); err != nil {
 		return fmt.Errorf("connect Codex: %w", err)
 	}
-	config, err = a.db.Config(ctx)
-	if err != nil {
-		return err
-	}
-	config.CodexBin = binary
-	return a.db.SaveConfig(ctx, config)
+	return a.db.SaveCodexBinary(ctx, binary)
 }
 
 func (a *application) configure(ctx context.Context, args []string) error {
@@ -77,44 +73,10 @@ func (a *application) configure(ctx context.Context, args []string) error {
 	if err := notify.ValidateAddresses(*to, *from); err != nil {
 		return err
 	}
-	config, err := a.db.Config(ctx)
-	if err != nil {
-		return err
-	}
-	config.To, config.From = *to, *from
-	if err := a.db.SaveConfig(ctx, config); err != nil {
-		return err
-	}
-	if err := a.reschedule(ctx); err != nil {
+	if err := a.db.ConfigureNotifications(ctx, *to, *from, time.Now().UTC()); err != nil {
 		return err
 	}
 	fmt.Fprintln(a.out, "Email settings saved. Save RESEND_API_KEY in .env or set it in the environment, then run resetwatch watch.")
-	return nil
-}
-
-// reschedule moves undelivered reminders to the current email settings, then arms any exhausted
-// window in the saved Codex and Claude readings.
-func (a *application) reschedule(ctx context.Context) error {
-	config, err := a.db.Config(ctx)
-	if err != nil {
-		return err
-	}
-	now := time.Now().UTC()
-	if err := a.db.MoveAlerts(ctx, config, now); err != nil {
-		return err
-	}
-	for _, provider := range []string{"codex", "claude"} {
-		snapshot, err := a.db.Snapshot(ctx, provider)
-		if errors.Is(err, sql.ErrNoRows) {
-			continue
-		}
-		if err != nil {
-			return err
-		}
-		if err := a.db.Schedule(ctx, snapshot, config, now); err != nil {
-			return err
-		}
-	}
 	return nil
 }
 

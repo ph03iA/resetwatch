@@ -8,8 +8,8 @@ import (
 )
 
 // NewReadings returns the windows whose values changed since this session last reported them.
-// Status line callbacks repeat a session's last numbers on timers and UI events, so only a
-// change (or a session's first report) is new quota data.
+// It tracks value changes only, not when the provider actually measured those values.
+// Deprecated: quota ingestion must use RecordSnapshot; session changes cannot prove freshness.
 func (d *DB) NewReadings(ctx context.Context, session string, windows []quota.Window, now time.Time) ([]quota.Window, error) {
 	tx, err := d.db.BeginTx(ctx, nil)
 	if err != nil {

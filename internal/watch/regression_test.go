@@ -49,7 +49,7 @@ func TestObserveSchedulesWithSettingsChangedDuringRead(t *testing.T) {
 				must(t, engine.DB.SaveConfig(ctx, updated))
 				return provider.snapshot, nil
 			})
-			_, err = engine.Observe(ctx, original)
+			_, err = engine.Observe(ctx)
 			must(t, err)
 			history, err := engine.DB.History(ctx, 10)
 			must(t, err)

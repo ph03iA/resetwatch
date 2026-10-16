@@ -20,6 +20,12 @@ func (a *application) render(snapshot quota.Snapshot, demo bool) {
 		a.renderWindow(window)
 	}
 	fmt.Fprintln(a.out, "  ──────────────────────────────────────────────────────")
+	fmt.Fprintln(a.out, "  Provider:", snapshot.Provider)
+	if snapshot.Provider == "claude" {
+		fmt.Fprintln(a.out, "  Latest callback:", snapshot.ObservedAt.Local().Format(time.RFC1123))
+		fmt.Fprintln(a.out, "  Last known usage; a Claude Code callback does not confirm available allowance.\n ")
+		return
+	}
 	fmt.Fprintln(a.out, "  Last observed:", snapshot.ObservedAt.Local().Format(time.RFC1123))
 	fmt.Fprintln(a.out, "  Saved observation; run status --refresh for current limits.\n ")
 }

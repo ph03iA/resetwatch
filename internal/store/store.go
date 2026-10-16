@@ -62,7 +62,7 @@ func Open(dir string) (*DB, error) {
 		return nil, err
 	}
 	fileURL := url.URL{Scheme: "file", Path: "/" + strings.TrimPrefix(filepath.ToSlash(path), "/")}
-	q := url.Values{"_pragma": {"busy_timeout(5000)", "journal_mode(WAL)", "synchronous(FULL)"}}
+	q := url.Values{"_pragma": {"busy_timeout(5000)", "journal_mode(WAL)", "synchronous(FULL)"}, "_txlock": {"immediate"}}
 	fileURL.RawQuery = q.Encode()
 	db, err := sql.Open("sqlite", fileURL.String())
 	if err != nil {
@@ -123,8 +123,12 @@ func initialize(db *sql.DB) (*DB, error) {
 func (d *DB) Close() error { return d.db.Close() }
 
 func (d *DB) Config(ctx context.Context) (Config, error) {
+	return loadConfig(ctx, d.db)
+}
+
+func loadConfig(ctx context.Context, db stateQueries) (Config, error) {
 	var value string
-	err := d.db.QueryRowContext(ctx, "SELECT value FROM settings WHERE key='config'").Scan(&value)
+	err := db.QueryRowContext(ctx, "SELECT value FROM settings WHERE key='config'").Scan(&value)
 	if errors.Is(err, sql.ErrNoRows) {
 		return Config{}, nil
 	}
@@ -137,18 +141,26 @@ func (d *DB) Config(ctx context.Context) (Config, error) {
 }
 
 func (d *DB) SaveConfig(ctx context.Context, config Config) error {
+	return saveConfig(ctx, d.db, config)
+}
+
+func saveConfig(ctx context.Context, db stateQueries, config Config) error {
 	data, err := json.Marshal(config)
 	if err != nil {
 		return err
 	}
-	_, err = d.db.ExecContext(ctx, `INSERT INTO settings(key,value) VALUES('config',?)
+	_, err = db.ExecContext(ctx, `INSERT INTO settings(key,value) VALUES('config',?)
  ON CONFLICT(key) DO UPDATE SET value=excluded.value`, string(data))
 	return err
 }
 
 func (d *DB) Snapshot(ctx context.Context, provider string) (quota.Snapshot, error) {
+	return loadSnapshot(ctx, d.db, provider)
+}
+
+func loadSnapshot(ctx context.Context, db stateQueries, provider string) (quota.Snapshot, error) {
 	var data string
-	err := d.db.QueryRowContext(ctx, "SELECT data FROM snapshots WHERE provider=?", provider).Scan(&data)
+	err := db.QueryRowContext(ctx, "SELECT data FROM snapshots WHERE provider=?", provider).Scan(&data)
 	if err != nil {
 		return quota.Snapshot{}, err
 	}
@@ -158,6 +170,10 @@ func (d *DB) Snapshot(ctx context.Context, provider string) (quota.Snapshot, err
 }
 
 func (d *DB) SaveSnapshot(ctx context.Context, snapshot quota.Snapshot) error {
+	return saveSnapshot(ctx, d.db, snapshot)
+}
+
+func saveSnapshot(ctx context.Context, db stateQueries, snapshot quota.Snapshot) error {
 	if err := quota.ValidateSnapshot(snapshot); err != nil {
 		return err
 	}
@@ -165,7 +181,7 @@ func (d *DB) SaveSnapshot(ctx context.Context, snapshot quota.Snapshot) error {
 	if err != nil {
 		return err
 	}
-	_, err = d.db.ExecContext(ctx, `INSERT INTO snapshots(provider,data) VALUES(?,?)
+	_, err = db.ExecContext(ctx, `INSERT INTO snapshots(provider,data) VALUES(?,?)
  ON CONFLICT(provider) DO UPDATE SET data=excluded.data`, snapshot.Provider, string(data))
 	return err
 }

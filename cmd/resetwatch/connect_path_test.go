@@ -6,6 +6,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -52,10 +53,13 @@ func TestConnectPersistsAbsoluteBinary(t *testing.T) {
 	binary := connectTestExecutable(t)
 	t.Setenv("RESETWATCH_CONNECT_HELPER", "1")
 	t.Chdir(filepath.Dir(binary))
-	app, _ := testApplication(t)
+	app, output := testApplication(t)
 	relative := "." + string(filepath.Separator) + filepath.Base(binary)
 	if err := app.run(context.Background(), []string{"connect", "codex", "--codex-bin", relative}); err != nil {
 		t.Fatal(err)
+	}
+	if !strings.Contains(output.String(), "Restart any running ResetWatch watcher") {
+		t.Fatal("connect must explain when the running watcher adopts connection changes")
 	}
 	if got := connectSavedConfig(t, app).CodexBin; got != binary {
 		t.Fatalf("saved executable = %q, want absolute path %q", got, binary)

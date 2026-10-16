@@ -22,7 +22,7 @@ func main() { os.Exit(execute()) }
 func execute() int {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
-	app := application{out: os.Stdout, errOut: os.Stderr, getenv: os.Getenv}
+	app := application{in: os.Stdin, out: os.Stdout, errOut: os.Stderr, getenv: os.Getenv}
 	err := app.run(ctx, os.Args[1:])
 	if err == nil || errors.Is(err, flag.ErrHelp) {
 		return 0
@@ -32,6 +32,7 @@ func execute() int {
 }
 
 type application struct {
+	in         io.Reader
 	out        io.Writer
 	errOut     io.Writer
 	getenv     func(string) string
@@ -60,6 +61,7 @@ func (a *application) stateCommand(ctx context.Context, args []string) error {
 	commands := map[string]func(context.Context, []string) error{
 		"connect": a.connect, "notify": a.configure, "status": a.status,
 		"history": a.history, "watch": a.watch, "retry": a.retry,
+		"claude-statusline": a.claudeStatusLine,
 	}
 	command, ok := commands[args[0]]
 	if !ok {
@@ -117,16 +119,18 @@ func (a *application) help(args []string) error {
 
 Usage:
   resetwatch connect codex [--codex-bin /path/to/codex]
+  resetwatch claude-statusline   (set as your Claude Code status line command)
   resetwatch notify --email you@example.com --from "ResetWatch <alerts@yourdomain.com>"
   resetwatch test-email --email your-resend-account-email [--from SENDER]
   resetwatch watch [--interval 1m] [--once]
-  resetwatch status [--refresh] [--json]
+  resetwatch status [--provider codex|claude] [--refresh] [--json]
   resetwatch history [--limit 20] [--json]
   resetwatch retry --id <full-alert-id>
   resetwatch demo
   resetwatch version
 
 Quota commands require Codex signed in with ChatGPT. No inference requests are made.
+Claude Pro/Max limits are read from Claude Code's status line data while Claude Code is open.
 Save RESEND_API_KEY in .env in your current folder, or set it in the environment.
 An existing environment key takes priority. The sender must be verified in Resend.
 test-email sends one labeled test immediately without a Codex connection.

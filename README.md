@@ -1,6 +1,6 @@
 # ResetWatch
 
-A local CLI that emails you when an exhausted Codex usage window reaches its reset time. Written in Go, with durable SQLite alerts and delivery through your Resend account.
+A local CLI that emails you when an exhausted Codex or Claude usage window reaches its reset time. Written in Go, with durable SQLite alerts and delivery through your Resend account.
 
 **Status:** v0.1.0 is a locally tested release candidate. The email integration is tested with simulated HTTP responses, and a live reset email has been delivered end to end through Resend's test sender. There are no prebuilt binaries; build from source. This project does not operate a hosted watcher.
 
@@ -62,6 +62,8 @@ On Windows, use the native `codex.exe` path. If you installed Codex with npm, on
 
 An explicit `--codex-bin` value is resolved and saved as an absolute path during connection, including relative paths and names found on `PATH`. Later directory or PATH changes do not change that saved executable. Without this flag, ResetWatch continues to look up Codex on `PATH` at runtime. If you previously saved a relative path, reconnect once with `--codex-bin` to normalize it.
 
+Restart any running watcher after connecting or reconnecting Codex, including after changing its executable. The watcher selects its quota provider when it starts; connecting in another terminal does not update that running process.
+
 Save your Resend key once in a file named `.env` in the folder where you run ResetWatch. If no `.env` exists yet, copy the supplied `.env.example` and edit the copy:
 
 ```dotenv
@@ -82,6 +84,28 @@ The file is loaded when a command starts. Restart a running watcher after changi
 
 To check email delivery immediately with a binary on your `PATH`, run `resetwatch test-email --email 'YOUR_RESEND_ACCOUNT_EMAIL'` from the folder containing `.env`. No quota exhaustion is needed. To use your own verified domain, add `--from 'ResetWatch <alerts@yourdomain.com>'`.
 
+## Claude (Pro and Max)
+
+Claude Code reports your 5-hour and weekly plan usage to its [status line](https://code.claude.com/docs/en/statusline) command. ResetWatch reads only that documented data; it never reads Claude credentials and makes no requests to Claude. Add this to `~/.claude/settings.json`, using the full path to your built binary:
+
+```json
+{
+  "statusLine": { "type": "command", "command": "/full/path/to/resetwatch claude-statusline" }
+}
+```
+
+On Windows, use the `.exe` path with forward slashes, for example `C:/Users/you/resetwatch/resetwatch.exe claude-statusline`. The status line then shows `Claude 5h 23% · 7d 41%`, and an exhausted window schedules a reminder. Run `resetwatch notify` and `resetwatch watch` as for Codex; the watcher sends Claude reminders even if Codex is not connected.
+
+Limits of this approach:
+
+- Readings arrive only while Claude Code is open and after its first response in a session. ResetWatch schedules a reminder only if a reading shows a window at 100%.
+- This replaces any status line you already use.
+- Repeated callbacks are safe to retry. A reading and its reminders are saved together, so an interrupted update does not permanently suppress that reading.
+- A missing window keeps its last known value until it resets. For the same reset time, saved usage never decreases; older reset times cannot replace newer ones. Values are last known usage, not a live verification of access.
+- Claude reminders always say the limit **should be back**, at the recorded reset time. Status-line callbacks can repeat cached data, so they never trigger early delivery or confirm available allowance.
+- The status line data has no account identity, so switching Claude accounts is not detected.
+- API-key and Bedrock/Vertex sessions report no plan limits; the status line stays empty.
+
 ## Commands
 
 | Command | Behavior |
@@ -90,8 +114,9 @@ To check email delivery immediately with a binary on your `PATH`, run `resetwatc
 | `resetwatch notify --email ADDRESS --from SENDER` | Save one recipient and sender; send no email. |
 | `resetwatch test-email --email ADDRESS [--from SENDER]` | Send one TEST email immediately; no Codex access, saved state, or automatic retries. |
 | `resetwatch watch [--interval 1m] [--once]` | Refresh quotas and deliver due alerts. Interval must be 15 seconds to 1 hour. |
-| `resetwatch status [--refresh] [--json]` | Show the saved observation; `--refresh` requests current data first. |
+| `resetwatch status [--provider codex\|claude] [--refresh] [--json]` | Show the saved observation (Codex if connected, otherwise Claude); `--refresh` requests current Codex data first. |
 | `resetwatch history [--limit 20] [--json]` | Show alert states and delivery attempts. Limit: 1–1000. |
+| `resetwatch claude-statusline` | Claude Code status line command: record plan usage from stdin and print a short summary. |
 | `resetwatch retry --id FULL_ALERT_ID` | Requeue an eligible failed alert, keeping the same delivery key and frozen message. |
 | `resetwatch demo` | Display labeled sample data without opening accounts or sending email. |
 | `resetwatch version` | Print the version. |
@@ -102,9 +127,13 @@ Use `resetwatch history --json` to obtain the full alert ID for a retry. A manua
 
 - An alert is armed when a reported window is exhausted (`used_percent >= 100`) and notification settings exist. The tool does not email for every routine quota check.
 - If Codex restores an exhausted window before its recorded reset time, the watcher emails at once instead of waiting. Windows that were never exhausted never send email.
-- At the recorded reset time, the watcher checks fresh quota data. A **confirmed** email requires fresh data showing the relevant window and every other reported window below exhaustion. A remaining exhausted window prevents that claim.
+- At a recorded Codex reset, the watcher checks fresh quota data. A **confirmed** email requires explicit backend permission for ordinary usage and reported windows below exhaustion. Older Codex versions that omit the permission decision receive expected-reset wording; Claude reminders always describe expected resets.
 - If fresh quota data is unavailable, the alert says **expected reset**. A reset timestamp alone does not prove access is available.
 - Pending alerts and delivery leases survive process restarts. A changed account, recipient, sender, or future reset cancels obsolete pending alerts.
+- Email settings and replacement reminders change together. Already-due reminders stay due, and completed reminders are not rebuilt from old quota readings. If a delivery is in progress, `notify` leaves the settings unchanged and asks you to retry after it finishes or its two-minute lease expires; interrupted expired claims can move to the new address.
+- Returning to an earlier recipient preserves that delivery key's existing frozen payload, attempt count and retry deadline. A terminally failed destination is not silently revived; the settings change fails without dropping the current reminder.
+- Reset times in email show your local time, fixed once when the message is first frozen, plus the exact UTC time. Changing the computer's time zone cannot change a retry body under the same delivery key. Messages frozen before this field existed keep UTC.
+- A stored confirmed Claude retry from an older build is cancelled rather than rewritten under its old delivery key. Inspect its previous provider delivery before scheduling another reminder. Exact request bodies from the older local-time renderer cannot be reconstructed; inspect any such outstanding retries before upgrading.
 - Network failures, HTTP 408/429, server errors, and Resend's temporary `409 concurrent_idempotent_requests` response are retried with exponential backoff and bounded `Retry-After` handling. Other conflicts and delivery failures stop automatic retries.
 - Delivery uses one stable idempotency key and an immutable message payload per alert. Resend's deduplication window is 24 hours; ResetWatch stops retrying before 23 hours from the first attempt, with at most eight attempts. Manual retries keep those limits.
 - Recovering an expired delivery lease also respects the eight-attempt limit. An interrupted final attempt becomes failed when its lease expires; it is not sent a ninth time.
@@ -159,7 +188,7 @@ This does not configure systemd automatically. A user service normally requires 
 
 ## Boundaries
 
-Only Codex is supported in this release. One connected account and one email configuration are stored per state directory. The account key hashes the normalized email address returned by Codex, so same-email workspace/account-context switches cannot be reliably distinguished. Use separate state directories and matching Codex contexts when isolation is needed; verify quota after switching. Do not assume cross-workspace identity isolation.
+Codex and Claude (Pro/Max, through the Claude Code status line) are supported in this release. One connected account and one email configuration are stored per state directory. The account key hashes the normalized email address returned by Codex, so same-email workspace/account-context switches cannot be reliably distinguished. Use separate state directories and matching Codex contexts when isolation is needed; verify quota after switching. Do not assume cross-workspace identity isolation.
 
 The Codex protocol and account eligibility can change. Missing or malformed quota data is an error, never zero usage. This tool cannot bypass limits, recover an expired sign-in, wake your laptop, or promise mail delivery. For production rollout, validate your actual Codex installation, sender domain, and inbox before relying on alerts.
 

@@ -273,8 +273,10 @@ func composeAlert(reset time.Time) store.Alert {
 }
 
 func watchSnapshot(observed, reset time.Time, used float64) quota.Snapshot {
+	allowed := true
 	return quota.Snapshot{Provider: "codex", AccountID: "account-hash", ObservedAt: observed,
-		Windows: []quota.Window{{ID: "codex:primary", UsedPercent: used, Duration: 5 * time.Hour, ResetsAt: reset}}}
+		OrdinaryUsageAllowed: &allowed,
+		Windows:              []quota.Window{{ID: "codex:primary", UsedPercent: used, Duration: 5 * time.Hour, ResetsAt: reset}}}
 }
 
 func watchTime() time.Time { return time.Date(2030, 1, 2, 10, 0, 0, 0, time.UTC) }
@@ -335,4 +337,42 @@ func TestStepEmailsEarlyResetOfExhaustedWindowOnly(t *testing.T) {
 		t.Fatalf("emailed a reset of a window that was never exhausted: %d messages", len(sender.messages))
 	}
 	assertHistory(t, engine.DB, "sent", 1)
+}
+
+func TestStepWithoutPollingSendsClaudeResetFromSavedReadings(t *testing.T) {
+	for _, fresh := range []bool{true, false} {
+		engine, _, sender, now := testEngine(t)
+		engine.Provider = nil
+		ctx := context.Background()
+		claude := quota.Snapshot{Provider: "claude", AccountID: quota.ClaudeAccountID, ObservedAt: *now,
+			Windows: []quota.Window{{ID: "claude:five_hour", UsedPercent: 100, Duration: 5 * time.Hour, ResetsAt: now.Add(time.Hour)}}}
+		must(t, engine.DB.SaveSnapshot(ctx, claude))
+		config, err := engine.DB.Config(ctx)
+		must(t, err)
+		must(t, engine.DB.Schedule(ctx, claude, config, *now))
+		*now = now.Add(time.Hour + time.Minute)
+		if fresh {
+			// Claude Code's status line reported again after the reset.
+			claude.ObservedAt = *now
+			claude.Windows[0].UsedPercent, claude.Windows[0].ResetsAt = 2, now.Add(5*time.Hour)
+			must(t, engine.DB.SaveSnapshot(ctx, claude))
+		}
+		must(t, engine.Step(ctx))
+		if len(sender.messages) != 1 || sender.messages[0].Provider != "claude" || sender.messages[0].Duration != 5*time.Hour {
+			t.Fatalf("fresh=%v: Claude reset was not emailed with its window length: %#v", fresh, sender.messages)
+		}
+		if sender.messages[0].Confirmed {
+			t.Fatalf("fresh=%v: status-line callbacks must never confirm Claude allowance", fresh)
+		}
+	}
+}
+
+func TestComposeFixesResetTimeInUserZone(t *testing.T) {
+	originalZone := time.Local
+	t.Cleanup(func() { time.Local = originalZone })
+	time.Local = time.FixedZone("IST", 5*3600+30*60)
+	message := compose(composeAlert(watchTime()), nil, watchTime())
+	if message.LocalResetAt != "3:30 PM IST" {
+		t.Fatalf("LocalResetAt = %q, want the reset in the user's zone", message.LocalResetAt)
+	}
 }

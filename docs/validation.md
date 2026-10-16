@@ -99,3 +99,19 @@ Tests use temporary state directories, simulated providers, fake email credentia
 - Recovered the original envelope SVG geometry from the repository and restored it beside the hero copy. The letter retains the brand mark; sample email text, countdown, statuses, email excerpts and preview/demo controls stay removed. The SVG is decorative and hidden from assistive technology.
 - Restored a balanced two-column desktop hero and a stacked mobile layout. Actual browser checks passed at widths 320, 390, 768, 960, 1024, 1280, 1366 and 1440: the artwork stayed inside the viewport, the heading did not overlap it, and no horizontal page overflow occurred. All checks found zero removed demo controls and only the brand text in the SVG.
 - Inspected desktop and mobile screenshots; the browser reported no console errors. No JavaScript, Go or release function changed, so their complexity and behavior are unchanged. Refreshed the local source archive and checksums; no publishing or provider calls occurred.
+
+## Whole-repository audit fixes — 2026-10-16
+
+Implemented on `fix/repo-audit`, based on `a585649`. Each of the five focused code commits passed the full race suite from an isolated export of its staged snapshot. Validation made no deployment or live account/email request.
+
+- Full baseline and combined `go test -race -count=1 ./...` passed. The final safeguard for older frozen Claude confirmations also passed the watcher race suite.
+- Added regressions for explicit true/false/unknown Codex usage permission and SQLite reopen; failed callback rollback/replay; concurrent partial Claude updates; preserved reset/usage ordering; initial notification setup; due A-to-B-to-A address changes; sent-reminder suppression; live/expired leases; cancelled and failed destination keys; immutable retry metadata; concurrent connection and email-setting changes; and stable actual Resend request bytes across local time zones.
+- `go vet ./...`, `go mod verify`, the all-functions complexity ceiling, diff whitespace, and website/server JavaScript syntax checks passed. `govulncheck@v1.9.0` reported no known vulnerabilities. Dependencies were unchanged.
+- Rebuilt `bin/resetwatch.exe`; its normal version command returned `resetwatch 0.1.0`. No credential lookup, database opening, quota request or email occurs on that command.
+- Browser checks at 320, 390, 768, 1366 and 1440 pixels found no page overflow. The focused skip link was the top element at every width. Claude support copy is consistent, with no remaining unsupported-Claude claim. The browser reported no console errors.
+- Codex confirmations require explicit backend permission; missing fields in older installations remain unknown. Claude messages are expected-only and retain their scheduled reset time. Callback/session changes never prove fresh allowance.
+- Notification changes are atomic. Live deliveries leave settings unchanged with retry guidance; expired interrupted claims can transfer. Returning to an existing key preserves its frozen payload and delivery budget. Completed or terminally failed entries are not silently revived.
+- Connection changes explicitly require restarting a running watcher. Updating the saved executable cannot overwrite a concurrent email configuration change.
+- Existing exported signatures were preserved, including the deprecated session-comparison helper. New ingestion uses the atomic recording path and does not depend on that helper.
+
+Not checked: real provider/account behavior, real inbox delivery and native macOS/Linux execution. Pre-fix local-time request bodies were never stored and cannot be reconstructed; inspect such outstanding retries before upgrading. Older stored confirmed Claude retries are cancelled without sending or rewriting their frozen bodies. No real state database or environment file was inspected or migrated.

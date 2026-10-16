@@ -191,3 +191,152 @@ Extracted: none. Deleted the preview listener and unused countdown/envelope/emai
 Behavior verified: the baseline page loaded without overflow and its installation commands were recorded before removal. Afterward, all three OS tabs passed at eight viewport widths (320–1440px), without page overflow or remaining demonstration elements. Actual browser checks verified all command-copy controls, clipboard-denial fallback, Arrow/Home/End tab navigation, anchor targets, reduced motion and the JavaScript-disabled Windows instructions. Every platform download returned HTTP 200. JavaScript syntax passed and the browser reported no console errors. Desktop/mobile screenshots were inspected. Only local files and an isolated clipboard stub were used; no account or email calls occurred.
 
 The decorative envelope was subsequently restored from the original SVG geometry, without its sample email text or interactive demonstration. Only HTML/CSS and documentation changed; no function's complexity changed. Eight viewport checks and desktop/mobile screenshot inspection verified the restored layout.
+
+## Whole-repository audit fixes — 2026-10-16
+
+Measured all production functions in touched Go files against `a585649` with gocyclo. Ranked by the greater before/after score; new functions have no invented baseline. The all-functions ceiling, including tests, remains 10.
+
+| Function | Before CC | After CC |
+| --- | ---: | ---: |
+| main.(*application).statusSnapshot | 9 | 9 |
+| store.(*DB).Schedule | 9 | 6 |
+| main.(*application).recordClaude | 8 | Removed |
+| notify.mailbox | 8 | 8 |
+| quota.ValidateSnapshot | 8 | 8 |
+| quota.decodeLimit | 8 | 8 |
+| store.schedule | New | 8 |
+| main.(*application).claudeStatusLine | 7 | 5 |
+| main.(*application).configure | 7 | 5 |
+| main.(*application).history | 7 | 7 |
+| main.(*application).reschedule | 7 | Removed |
+| store.(*DB).ConfigureNotifications | New | 7 |
+| store.(*DB).NewReadings | 7 | 7 |
+| store.(*DB).RecordSnapshot | New | 7 |
+| store.mergeClaude | New | 7 |
+| watch.(*Engine).cancelReason | 7 | 7 |
+| watch.compose | 7 | 7 |
+| watch.freshForAlert | 6 | 7 |
+| main.(*application).retry | 6 | 6 |
+| main.(*application).watch | 6 | 6 |
+| quota.decodeSnapshot | 6 | 6 |
+| quota.decodeWindow | 6 | 6 |
+| quota.validateWindow | 6 | 6 |
+| store.(*DB).MoveAlerts | 6 | 4 |
+| watch.(*Engine).sendAlert | 4 | 6 |
+| watch.windowDuration | 6 | 6 |
+| main.(*application).connectFlags | 5 | 5 |
+| main.(*application).status | 5 | 5 |
+| notify.validateResetMetadata | 5 | 5 |
+| notify.windowLabel | 5 | 5 |
+| quota.accountIdentity | 5 | 5 |
+| store.moveAlert | New | 5 |
+| store.prepareDirectory | 5 | 5 |
+| store.prepareFile | 5 | 5 |
+| store.scheduleSaved | New | 5 |
+| watch.(*Engine).Observe | 5 | 3 |
+| watch.(*Engine).deliverDue | 5 | 5 |
+| watch.(*Engine).loop | 5 | 5 |
+| main.(*application).connect | 4 | 4 |
+| main.(*application).connectCodex | 4 | 3 |
+| main.(*application).render | 4 | 4 |
+| main.(*application).renderHistory | 4 | 4 |
+| notify.messageContent | 4 | 4 |
+| notify.validateLabel | 4 | 4 |
+| notify.validateMessage | 4 | 4 |
+| quota.decodeLimits | 4 | 4 |
+| quota.validPercent | 4 | 4 |
+| store.(*DB).Finish | 4 | 4 |
+| store.(*DB).History | 4 | 4 |
+| store.(*DB).Retry | 4 | 4 |
+| store.(*DB).SaveCodexBinary | New | 4 |
+| store.Open | 4 | 4 |
+| store.alertsToMove | 4 | 4 |
+| store.cancelMissing | 4 | 4 |
+| store.initialize | 4 | 4 |
+| store.moveAlerts | New | 4 |
+| store.reconcileNotifications | New | 4 |
+| store.recordingSnapshot | New | 4 |
+| store.scheduleWindow | 4 | 4 |
+| watch.(*Engine).Run | 4 | 4 |
+| watch.(*Engine).Step | 4 | 4 |
+| watch.(*Engine).alertSnapshot | 4 | 4 |
+| watch.confirmedUsageAllowed | New | 4 |
+| watch.retryDecision | 4 | 4 |
+| notify.ValidateAddresses | 3 | 3 |
+| store.(*DB).Config | 3 | 1 |
+| store.(*DB).SaveSnapshot | 3 | 1 |
+| store.loadConfig | New | 3 |
+| store.newerClaudeWindow | New | 3 |
+| store.rejectActiveDelivery | New | 3 |
+| store.saveSnapshot | New | 3 |
+| watch.(*Engine).deliver | 3 | 3 |
+| main.(*application).codexProvider | 2 | 2 |
+| main.(*application).demo | 2 | 2 |
+| main.(*application).refresh | 2 | 2 |
+| main.claudeSummary | 2 | 2 |
+| main.countdown | 2 | 2 |
+| notify.RetryAfter | 2 | 2 |
+| notify.Retryable | 2 | 2 |
+| notify.limitName | 2 | 2 |
+| notify.resetHTML | 2 | 2 |
+| quota.validTime | 2 | 2 |
+| store.(*DB).Claim | 2 | 2 |
+| store.(*DB).SaveConfig | 2 | 1 |
+| store.(*DB).Snapshot | 2 | 1 |
+| store.loadSnapshot | New | 2 |
+| store.releaseEarlyReset | 1 | 2 |
+| store.saveConfig | New | 2 |
+| store.scanAlert | 2 | 2 |
+| watch.(*Engine).clock | 2 | 2 |
+| watch.(*Engine).log | 2 | 2 |
+| watch.(*Engine).recordFailure | 2 | 2 |
+| main.(*application).renderWindow | 1 | 1 |
+| main.writeJSON | 1 | 1 |
+| notify.(*deliveryError).Error | 1 | 1 |
+| notify.emailHTML | 1 | 1 |
+| notify.providerName | 1 | 1 |
+| notify.testMessageContent | 1 | 1 |
+| store.(*DB).Close | 1 | 1 |
+| store.alertID | 1 | 1 |
+| store.alertKey | 1 | 1 |
+| store.cancelReplaced | 1 | 1 |
+| store.cancelSuperseded | 1 | 1 |
+
+Extracted: transaction-compatible config/snapshot reads and writes, shared `schedule`, and individual `moveAlert` handling. Added atomic `RecordSnapshot`, `ConfigureNotifications`, and `SaveCodexBinary` operations with small named merge and reconciliation helpers. Removed the CLI `recordClaude` and `reschedule` orchestration. The existing exported `NewReadings` remains compatible but deprecated; ingestion no longer depends on it.
+
+Behavior verified: baseline and combined race suites pass. Regression cases cover failed recording rollback/replay, concurrent partial callbacks, backend allowance denial, expected-only Claude reminders, due address round trips, live/expired claims, immutable payloads, terminal destinations, concurrent connection/settings updates and fixed-UTC request bytes.
+
+## Review follow-ups — 2026-10-16
+
+Local reset time is computed once in `compose` and frozen in `notify.Message.LocalResetAt`; the email falls back to UTC for messages frozen without it. Removed unused session tracking (`NewReadings`, the `readings` table, `session_id` parsing), the standalone `MoveAlerts` wrapper (its test now runs through `ConfigureNotifications`) and `Observe`'s unused settings argument.
+
+| Function | Before CC | After CC |
+| --- | ---: | ---: |
+| watch.compose | 7 | 7 |
+| quota.DecodeClaudeStatusLine | 8 | 7 |
+| main.(*application).claudeStatusLine | 5 | 5 |
+| notify.messageContent | 4 | 4 |
+| store.moveAlerts | 4 | 4 |
+| watch.(*Engine).Step | 4 | 3 |
+| watch.(*Engine).Observe | 3 | 3 |
+| main.(*application).connectCodex | 3 | 2 |
+| main.(*application).refresh | 2 | 2 |
+| notify.localResetAt | New | 2 |
+| store.(*DB).NewReadings | 7 | Removed |
+| store.(*DB).MoveAlerts | 4 | Removed |
+| quota.validSessionID | 3 | Removed |
+
+Behavior verified: full suite and `go test -race` (64-bit build) pass; `gocyclo -over 10 cmd internal` passes. New tests cover the frozen local time surviving a time-zone change, `compose` using the user's zone, and Claude data without `session_id`.
+
+## Still-exhausted warning — 2026-10-16
+
+`compose` adds the "another limit is still used up" warning from any same-account reading taken after the reset, before the confirmation check, so unconfirmed Codex and Claude emails keep it. Windows whose reset already passed no longer count.
+
+| Function | Before CC | After CC |
+| --- | ---: | ---: |
+| watch.compose | 7 | 7 |
+| watch.freshForAlert | 7 | 3 |
+| watch.observedAfterReset | New | 5 |
+| watch.windowAvailable | New | 2 |
+
+Behavior verified: new `TestStillExhaustedWindowWarnsWithoutConfirmation` failed before the change (3 cases) and passes after; full suite and `go test -race` (64-bit build) pass.

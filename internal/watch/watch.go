@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"slices"
 	"time"
 
 	"resetwatch/internal/notify"
@@ -34,11 +35,12 @@ func (e *Engine) log(message string) {
 }
 
 func (e *Engine) Step(ctx context.Context) error {
-	config, err := e.DB.Config(ctx)
-	if err != nil {
-		return err
+	// A nil Provider means nothing to poll (Claude readings arrive from its status line instead).
+	var snapshot *quota.Snapshot
+	var observationErr error
+	if e.Provider != nil {
+		snapshot, observationErr = e.Observe(ctx)
 	}
-	snapshot, observationErr := e.Observe(ctx, config)
 	if observationErr != nil {
 		e.log("Quota refresh unavailable; due emails will describe expected resets only.")
 	}
@@ -46,19 +48,13 @@ func (e *Engine) Step(ctx context.Context) error {
 	return errors.Join(observationErr, deliveryErr)
 }
 
-func (e *Engine) Observe(ctx context.Context, config store.Config) (*quota.Snapshot, error) {
+// Observe reads the provider and records the reading; RecordSnapshot loads current settings itself.
+func (e *Engine) Observe(ctx context.Context) (*quota.Snapshot, error) {
 	snapshot, err := e.Provider.Read(ctx)
 	if err != nil {
 		return nil, err
 	}
-	if err := e.DB.SaveSnapshot(ctx, snapshot); err != nil {
-		return nil, err
-	}
-	config, err = e.DB.Config(ctx)
-	if err != nil {
-		return nil, err
-	}
-	if err := e.DB.Schedule(ctx, snapshot, config, e.clock()); err != nil {
+	if err := e.DB.RecordSnapshot(ctx, snapshot, e.clock()); err != nil {
 		return nil, err
 	}
 	return &snapshot, nil
@@ -92,9 +88,12 @@ func (e *Engine) deliver(ctx context.Context, alert store.Alert, snapshot *quota
 }
 
 func (e *Engine) sendAlert(ctx context.Context, alert store.Alert, snapshot *quota.Snapshot) error {
-	message, err := e.DB.FreezeMessage(ctx, alert, compose(alert, snapshot, e.clock()))
+	message, err := e.DB.FreezeMessage(ctx, alert, compose(alert, e.alertSnapshot(ctx, alert, snapshot), e.clock()))
 	if err != nil {
 		return err
+	}
+	if message.Provider == "claude" && message.Confirmed {
+		return e.DB.Finish(ctx, alert, "cancelled", "stored Claude confirmation cannot be safely retried; inspect the previous delivery", e.clock(), e.clock())
 	}
 	err = e.Sender.Send(ctx, message)
 	if err != nil {
@@ -105,6 +104,19 @@ func (e *Engine) sendAlert(ctx context.Context, alert store.Alert, snapshot *quo
 	}
 	e.log("Reset email accepted by email provider: " + alert.ID[:12])
 	return nil
+}
+
+// alertSnapshot prefers this cycle's reading of the alert's provider and otherwise the last saved one;
+// compose still only confirms a reset from data observed after it and within two minutes.
+func (e *Engine) alertSnapshot(ctx context.Context, alert store.Alert, current *quota.Snapshot) *quota.Snapshot {
+	if current != nil && current.Provider == alert.Provider {
+		return current
+	}
+	saved, err := e.DB.Snapshot(ctx, alert.Provider)
+	if err != nil {
+		return nil
+	}
+	return &saved
 }
 
 func (e *Engine) cancelReason(ctx context.Context, alert store.Alert, config store.Config) string {
@@ -129,22 +141,32 @@ func (e *Engine) cancelReason(ctx context.Context, alert store.Alert, config sto
 
 func compose(alert store.Alert, snapshot *quota.Snapshot, now time.Time) notify.Message {
 	message := notify.Message{Key: alert.ID, To: alert.To, From: alert.From,
-		Provider: alert.Provider, Window: alert.Window, ResetAt: alert.ResetAt, Duration: windowDuration(snapshot, alert)}
-	if !freshForAlert(snapshot, alert, now) {
+		Provider: alert.Provider, Window: alert.Window, ResetAt: alert.ResetAt, Duration: windowDuration(snapshot, alert),
+		LocalResetAt: alert.ResetAt.Local().Format("3:04 PM MST")}
+	if !observedAfterReset(snapshot, alert, now) {
 		return message
 	}
+	// Usage never drops inside a window, so a window still at 100% before its reset is still used up,
+	// even when the reading is too old or unconfirmed to prove the alert's own window is back.
 	for _, window := range snapshot.Windows {
-		if window.UsedPercent >= 100 {
+		if window.UsedPercent >= 100 && window.ResetsAt.After(now) {
 			message.OtherLimit = true
 		}
-		if window.ID == alert.Window && window.UsedPercent < 100 {
-			message.Confirmed = true
-		}
 	}
-	if message.OtherLimit {
-		message.Confirmed = false
-	}
+	message.Confirmed = !message.OtherLimit && freshForAlert(snapshot, alert, now) && windowAvailable(snapshot, alert.Window)
 	return message
+}
+
+func windowAvailable(snapshot *quota.Snapshot, id string) bool {
+	return slices.ContainsFunc(snapshot.Windows, func(w quota.Window) bool { return w.ID == id && w.UsedPercent < 100 })
+}
+
+// observedAfterReset reports whether the reading is for this alert's account and was taken after its reset.
+func observedAfterReset(snapshot *quota.Snapshot, alert store.Alert, now time.Time) bool {
+	if snapshot == nil || snapshot.AccountID != alert.AccountID || snapshot.Provider != alert.Provider {
+		return false
+	}
+	return !snapshot.ObservedAt.Before(alert.ResetAt) && !snapshot.ObservedAt.After(now.Add(time.Minute))
 }
 
 // windowDuration finds the alert window's length in a snapshot of the same account; zero when unknown.
@@ -160,17 +182,19 @@ func windowDuration(snapshot *quota.Snapshot, alert store.Alert) time.Duration {
 	return 0
 }
 
+// freshForAlert reports whether the reading can prove the reset: explicit permission, observed after it, within two minutes.
 func freshForAlert(snapshot *quota.Snapshot, alert store.Alert, now time.Time) bool {
-	if snapshot == nil {
-		return false
+	return observedAfterReset(snapshot, alert, now) && confirmedUsageAllowed(snapshot) && now.Sub(snapshot.ObservedAt) <= 2*time.Minute
+}
+
+func confirmedUsageAllowed(snapshot *quota.Snapshot) bool {
+	if snapshot.Provider == "claude" {
+		return false // callback time is not a provider measurement time
 	}
-	if snapshot.AccountID != alert.AccountID || snapshot.Provider != alert.Provider {
-		return false
+	if snapshot.Provider == "codex" {
+		return snapshot.OrdinaryUsageAllowed != nil && *snapshot.OrdinaryUsageAllowed
 	}
-	if snapshot.ObservedAt.Before(alert.ResetAt) || snapshot.ObservedAt.After(now.Add(time.Minute)) {
-		return false
-	}
-	return now.Sub(snapshot.ObservedAt) <= 2*time.Minute
+	return false
 }
 
 func (e *Engine) recordFailure(ctx context.Context, alert store.Alert, sendErr error) error {

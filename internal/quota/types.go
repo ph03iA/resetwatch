@@ -20,6 +20,10 @@ type Snapshot struct {
 	AccountID  string    `json:"account_id"`
 	ObservedAt time.Time `json:"observed_at"`
 	Windows    []Window  `json:"windows"`
+	// A nil allowance decision is unknown, rather than permission inferred from usage percentages.
+	OrdinaryUsageAllowed *bool `json:"ordinary_usage_allowed,omitempty"`
+	// Partial means a missing window is unknown rather than removed (Claude omits windows independently).
+	Partial bool `json:"partial,omitempty"`
 }
 
 type Provider interface {

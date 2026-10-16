@@ -393,3 +393,31 @@ func must(t *testing.T, err error) {
 		t.Fatal(err)
 	}
 }
+
+func TestMoveAlertsKeepsDueReminderDueAndFrozenPayload(t *testing.T) {
+	ctx := context.Background()
+	db := openTestDB(t, t.TempDir())
+	now := storeTime()
+	must(t, db.Schedule(ctx, testSnapshot(now, now.Add(time.Hour), 100), testConfig(), now))
+	due := now.Add(2 * time.Hour) // reset passed, not delivered yet
+	old, err := db.Claim(ctx, due)
+	must(t, err)
+	_, err = db.FreezeMessage(ctx, old, notify.Message{Key: old.ID, To: old.To, From: old.From})
+	must(t, err)
+	must(t, db.Finish(ctx, old, "retry", "temporary", due, due))
+	moved := testConfig()
+	moved.To = "new@example.test"
+	must(t, db.MoveAlerts(ctx, moved, due))
+	must(t, db.MoveAlerts(ctx, moved, due)) // same settings again: nothing more to move
+	alert, err := db.Claim(ctx, due)
+	must(t, err)
+	if alert.To != moved.To || alert.ID == old.ID || alert.Attempts != 1 || !alert.ResetAt.Equal(old.ResetAt) {
+		t.Fatalf("due reminder was not moved intact: %#v", alert)
+	}
+	var state, payload string
+	must(t, db.db.QueryRowContext(ctx, "SELECT state,payload FROM alerts WHERE id=?", old.ID).Scan(&state, &payload))
+	if state != "cancelled" || payload == "" {
+		t.Fatalf("old reminder must be cancelled with its frozen payload kept: %s %q", state, payload)
+	}
+	assertStates(t, db, map[string]int{"cancelled": 1, "sending": 1})
+}

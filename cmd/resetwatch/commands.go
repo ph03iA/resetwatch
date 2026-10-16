@@ -92,40 +92,44 @@ func (a *application) configure(ctx context.Context, args []string) error {
 	return nil
 }
 
+// reschedule moves undelivered reminders to the current email settings, then arms any exhausted
+// window in the saved Codex and Claude readings.
 func (a *application) reschedule(ctx context.Context) error {
-	snapshot, err := a.db.Snapshot(ctx, "codex")
-	if errors.Is(err, sql.ErrNoRows) {
-		return nil
-	}
-	if err != nil {
-		return err
-	}
 	config, err := a.db.Config(ctx)
 	if err != nil {
 		return err
 	}
-	return a.db.Schedule(ctx, snapshot, config, time.Now().UTC())
+	now := time.Now().UTC()
+	if err := a.db.MoveAlerts(ctx, config, now); err != nil {
+		return err
+	}
+	for _, provider := range []string{"codex", "claude"} {
+		snapshot, err := a.db.Snapshot(ctx, provider)
+		if errors.Is(err, sql.ErrNoRows) {
+			continue
+		}
+		if err != nil {
+			return err
+		}
+		if err := a.db.Schedule(ctx, snapshot, config, now); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func (a *application) status(ctx context.Context, args []string) error {
 	flags := a.flags("status")
 	refresh := flags.Bool("refresh", false, "read current account limits before displaying")
 	asJSON := flags.Bool("json", false, "machine-readable output")
+	provider := flags.String("provider", "", "codex or claude (default: codex if connected, else claude)")
 	if err := flags.Parse(args); err != nil {
 		return err
 	}
 	if err := noArguments(flags.Args()); err != nil {
 		return err
 	}
-	if *refresh {
-		if err := a.refresh(ctx); err != nil {
-			return err
-		}
-	}
-	snapshot, err := a.db.Snapshot(ctx, "codex")
-	if errors.Is(err, sql.ErrNoRows) {
-		return errors.New("no connected account; run resetwatch connect codex")
-	}
+	snapshot, err := a.statusSnapshot(ctx, *provider, *refresh)
 	if err != nil {
 		return err
 	}
@@ -134,6 +138,37 @@ func (a *application) status(ctx context.Context, args []string) error {
 	}
 	a.render(snapshot, false)
 	return nil
+}
+
+var noReadings = map[string]string{
+	"codex":  "no connected account; run resetwatch connect codex",
+	"claude": "no Claude readings yet; set resetwatch claude-statusline as your Claude Code status line and use Claude Code",
+}
+
+// statusSnapshot picks the provider to show and returns its saved reading, refreshing Codex on request.
+func (a *application) statusSnapshot(ctx context.Context, provider string, refresh bool) (quota.Snapshot, error) {
+	if provider == "" {
+		provider = "claude"
+		if _, err := a.db.Snapshot(ctx, "codex"); err == nil {
+			provider = "codex"
+		}
+	}
+	if noReadings[provider] == "" {
+		return quota.Snapshot{}, errors.New("provider must be codex or claude")
+	}
+	if refresh && provider == "claude" {
+		return quota.Snapshot{}, errors.New("Claude readings arrive from Claude Code's status line; use Claude Code to update them")
+	}
+	if refresh {
+		if err := a.refresh(ctx); err != nil {
+			return quota.Snapshot{}, err
+		}
+	}
+	snapshot, err := a.db.Snapshot(ctx, provider)
+	if errors.Is(err, sql.ErrNoRows) {
+		return quota.Snapshot{}, errors.New(noReadings[provider])
+	}
+	return snapshot, err
 }
 
 func (a *application) refresh(ctx context.Context) error {

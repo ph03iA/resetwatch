@@ -20,6 +20,8 @@ type Snapshot struct {
 	AccountID  string    `json:"account_id"`
 	ObservedAt time.Time `json:"observed_at"`
 	Windows    []Window  `json:"windows"`
+	// Partial means a missing window is unknown rather than removed (Claude omits windows independently).
+	Partial bool `json:"partial,omitempty"`
 }
 
 type Provider interface {

@@ -2,63 +2,62 @@ package quota
 
 import (
 	"errors"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
 )
 
+var claudeNow = time.Date(2030, 1, 2, 10, 0, 0, 0, time.UTC)
+
 func TestDecodeClaudeStatusLine(t *testing.T) {
-	now := time.Date(2030, 1, 2, 10, 0, 0, 0, time.UTC)
-	input := `{"model":{"display_name":"Opus"},"rate_limits":{"five_hour":{"used_percentage":100,"resets_at":1893582000},` +
+	input := `{"session_id":"s1","rate_limits":{"five_hour":{"used_percentage":100,"resets_at":1893582000},` +
 		`"seven_day":{"used_percentage":41.2,"resets_at":1894100000}}}`
-	snapshot, err := DecodeClaudeStatusLine(strings.NewReader(input), now)
+	snapshot, session, err := DecodeClaudeStatusLine(strings.NewReader(input), claudeNow)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if snapshot.Provider != "claude" || snapshot.AccountID != ClaudeAccountID || len(snapshot.Windows) != 2 {
-		t.Fatalf("unexpected snapshot: %#v", snapshot)
-	}
-	five := snapshot.Windows[0]
-	if five.ID != "claude:five_hour" || five.UsedPercent != 100 || five.Duration != 5*time.Hour || five.ResetsAt.Unix() != 1893582000 {
-		t.Fatalf("unexpected five-hour window: %#v", five)
-	}
-	if snapshot.Windows[1].Duration != 7*24*time.Hour {
-		t.Fatalf("unexpected weekly window: %#v", snapshot.Windows[1])
+	want := Snapshot{Provider: "claude", AccountID: ClaudeAccountID, ObservedAt: claudeNow, Partial: true, Windows: []Window{
+		{ID: "claude:five_hour", UsedPercent: 100, ResetsAt: time.Unix(1893582000, 0).UTC(), Duration: 5 * time.Hour},
+		{ID: "claude:seven_day", UsedPercent: 41.2, ResetsAt: time.Unix(1894100000, 0).UTC(), Duration: 7 * 24 * time.Hour},
+	}}
+	if session != "s1" || !reflect.DeepEqual(snapshot, want) {
+		t.Fatalf("session %q, snapshot %#v", session, snapshot)
 	}
 }
 
 func TestDecodeClaudeStatusLineAcceptsByteOrderMark(t *testing.T) {
-	now := time.Date(2030, 1, 2, 10, 0, 0, 0, time.UTC)
-	input := "\xef\xbb\xbf" + `{"rate_limits":{"five_hour":{"used_percentage":42,"resets_at":1893582000}}}` + "\r\n"
-	if _, err := DecodeClaudeStatusLine(strings.NewReader(input), now); err != nil {
+	input := "\xef\xbb\xbf" + `{"session_id":"s1","rate_limits":{"five_hour":{"used_percentage":42,"resets_at":1893582000}}}` + "\r\n"
+	if _, _, err := DecodeClaudeStatusLine(strings.NewReader(input), claudeNow); err != nil {
 		t.Fatalf("PowerShell-piped input with a byte-order mark was rejected: %v", err)
 	}
 }
 
 func TestDecodeClaudeStatusLineSkipsAbsentAndExpiredWindows(t *testing.T) {
-	now := time.Date(2030, 1, 2, 10, 0, 0, 0, time.UTC)
-	input := `{"rate_limits":{"five_hour":{"used_percentage":100,"resets_at":1893578400},"seven_day":{"used_percentage":12,"resets_at":1894100000}}}`
-	snapshot, err := DecodeClaudeStatusLine(strings.NewReader(input), now)
+	input := `{"session_id":"s1","rate_limits":{"five_hour":{"used_percentage":100,"resets_at":1893578400},"seven_day":{"used_percentage":12,"resets_at":1894100000}}}`
+	snapshot, _, err := DecodeClaudeStatusLine(strings.NewReader(input), claudeNow)
 	if err != nil || len(snapshot.Windows) != 1 || snapshot.Windows[0].ID != "claude:seven_day" {
 		t.Fatalf("expired five-hour window should be skipped: %#v, %v", snapshot, err)
 	}
 }
 
 func TestDecodeClaudeStatusLineRejectsBadInput(t *testing.T) {
-	now := time.Date(2030, 1, 2, 10, 0, 0, 0, time.UTC)
+	window := `"rate_limits":{"five_hour":{"used_percentage":40,"resets_at":1893582000}}`
 	cases := map[string]string{
-		"no rate limits":     `{"model":{"display_name":"Opus"}}`,
-		"missing percentage": `{"rate_limits":{"five_hour":{"resets_at":1893582000}}}`,
+		"no rate limits":     `{"session_id":"s1","model":{"display_name":"Opus"}}`,
+		"missing percentage": `{"session_id":"s1","rate_limits":{"five_hour":{"resets_at":1893582000}}}`,
 		"not json":           `not json`,
-		"percent over 100":   `{"rate_limits":{"five_hour":{"used_percentage":140,"resets_at":1893582000}}}`,
+		"percent over 100":   `{"session_id":"s1","rate_limits":{"five_hour":{"used_percentage":140,"resets_at":1893582000}}}`,
 		"too large":          `{"pad":"` + strings.Repeat("x", maxStatusLine) + `"}`,
+		"no session":         `{` + window + `}`,
+		"control in session": `{"session_id":"a\u0000b",` + window + `}`,
 	}
 	for name, input := range cases {
-		if _, err := DecodeClaudeStatusLine(strings.NewReader(input), now); err == nil {
+		if _, _, err := DecodeClaudeStatusLine(strings.NewReader(input), claudeNow); err == nil {
 			t.Errorf("%s: expected an error", name)
 		}
 	}
-	if _, err := DecodeClaudeStatusLine(strings.NewReader(`{}`), now); !errors.Is(err, ErrNoClaudeLimits) {
+	if _, _, err := DecodeClaudeStatusLine(strings.NewReader(`{}`), claudeNow); !errors.Is(err, ErrNoClaudeLimits) {
 		t.Errorf("missing limits should be ErrNoClaudeLimits, got %v", err)
 	}
 }

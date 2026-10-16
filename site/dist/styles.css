@@ -92,8 +92,8 @@ h2 em { font-family: var(--serif); font-weight: 400; font-size: 1.22em; line-hei
 .step-copy h3 { font-size: 20px; font-weight: 500; letter-spacing: -.55px; line-height: 1.3; }
 .step-help { font-size: 13px; line-height: 1.85; color: #b7b6a9; margin-top: 14px; }
 .step-aside { color: #99998c; font-size: 11px; line-height: 1.9; margin-top: 17px; }
-.step-help a, .sender-note a { color: var(--text); text-decoration: underline; text-underline-offset: 4px; text-decoration-color: #79735f; }
-.step-help a:hover, .sender-note a:hover { color: var(--accent); }
+.step-help a, .step-aside a, .sender-note a { color: var(--text); text-decoration: underline; text-underline-offset: 4px; text-decoration-color: #79735f; }
+.step-help a:hover, .step-aside a:hover, .sender-note a:hover { color: var(--accent); }
 .step-help code, .step-aside code, .sender-note code { font-family: var(--mono); font-size: .94em; color: #d2cbb9; overflow-wrap: anywhere; }
 .code-block { min-width: 0; border: 1px solid #3b3d31; border-radius: 5px; background: #12140f; box-shadow: 0 1px 0 #262a20 inset; }
 .code-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 15px 18px 0; color: #9e9f90; font-size: 11px; }

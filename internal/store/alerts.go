@@ -13,7 +13,11 @@ import (
 )
 
 func alertID(snapshot quota.Snapshot, window quota.Window, config Config) string {
-	data, _ := json.Marshal([]any{snapshot.Provider, snapshot.AccountID, window.ID, window.ResetsAt.Unix(), config.To, config.From})
+	return alertKey(snapshot.Provider, snapshot.AccountID, window.ID, window.ResetsAt.Unix(), config)
+}
+
+func alertKey(provider, accountID, windowID string, resetAt int64, config Config) string {
+	data, _ := json.Marshal([]any{provider, accountID, windowID, resetAt, config.To, config.From})
 	sum := sha256.Sum256(data)
 	return hex.EncodeToString(sum[:])
 }
@@ -52,6 +56,9 @@ func cancelReplaced(ctx context.Context, tx *sql.Tx, snapshot quota.Snapshot, co
 }
 
 func cancelMissing(ctx context.Context, tx *sql.Tx, snapshot quota.Snapshot, now time.Time) error {
+	if snapshot.Partial {
+		return nil // a window missing from a partial reading is unknown, not removed
+	}
 	ids := make([]string, 0, len(snapshot.Windows))
 	for _, window := range snapshot.Windows {
 		ids = append(ids, window.ID)
@@ -86,12 +93,13 @@ func scheduleWindow(ctx context.Context, tx *sql.Tx, snapshot quota.Snapshot, wi
 }
 
 // releaseEarlyReset makes an exhausted window's future alert due now when the
-// provider reports allowance back before the recorded reset time.
+// provider reports allowance back in a new window before the recorded reset time.
+// Only a later reset time proves a new window began; a lower percentage alone may be an old reading.
 func releaseEarlyReset(ctx context.Context, tx *sql.Tx, snapshot quota.Snapshot, window quota.Window, now time.Time) error {
 	resetAt := min(snapshot.ObservedAt.Unix(), now.Unix())
 	_, err := tx.ExecContext(ctx, `UPDATE alerts SET reset_at=?,next_attempt=?,updated_at=?
- WHERE provider=? AND account_id=? AND window_id=? AND reset_at>? AND state IN ('pending','retry')`,
-		resetAt, now.Unix(), now.Unix(), snapshot.Provider, snapshot.AccountID, window.ID, now.Unix())
+ WHERE provider=? AND account_id=? AND window_id=? AND reset_at>? AND reset_at<? AND state IN ('pending','retry')`,
+		resetAt, now.Unix(), now.Unix(), snapshot.Provider, snapshot.AccountID, window.ID, now.Unix(), window.ResetsAt.Unix())
 	return err
 }
 
@@ -176,4 +184,50 @@ func (d *DB) Retry(ctx context.Context, id string, now time.Time) error {
 		return errors.New("alert is not failed, not found, exhausted eight attempts, or outside its safe retry window")
 	}
 	return err
+}
+
+// MoveAlerts readdresses undelivered reminders after the email settings change. Each gets a new
+// delivery key and an empty payload; the old entry is cancelled with its frozen message untouched.
+// Reset and due times carry over, so an already-due reminder stays due.
+func (d *DB) MoveAlerts(ctx context.Context, config Config, now time.Time) error {
+	tx, err := d.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	moving, err := alertsToMove(ctx, tx, config)
+	if err != nil {
+		return err
+	}
+	for _, alert := range moving {
+		id := alertKey(alert.Provider, alert.AccountID, alert.Window, alert.ResetAt.Unix(), config)
+		if _, err := tx.ExecContext(ctx, `INSERT INTO alerts (id,provider,account_id,window_id,reset_at,recipient,sender,next_attempt,updated_at)
+ VALUES(?,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO NOTHING`, id, alert.Provider, alert.AccountID, alert.Window,
+			alert.ResetAt.Unix(), config.To, config.From, alert.NextAttempt.Unix(), now.Unix()); err != nil {
+			return err
+		}
+		if _, err := tx.ExecContext(ctx, `UPDATE alerts SET state='cancelled',last_error='notification settings changed',updated_at=?
+ WHERE id=? AND state IN ('pending','retry')`, now.Unix(), alert.ID); err != nil {
+			return err
+		}
+	}
+	return tx.Commit()
+}
+
+func alertsToMove(ctx context.Context, tx *sql.Tx, config Config) ([]Alert, error) {
+	rows, err := tx.QueryContext(ctx, "SELECT "+alertColumns+` FROM alerts
+ WHERE state IN ('pending','retry') AND (recipient<>? OR sender<>?)`, config.To, config.From)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var alerts []Alert
+	for rows.Next() {
+		alert, err := scanAlert(rows)
+		if err != nil {
+			return nil, err
+		}
+		alerts = append(alerts, alert)
+	}
+	return alerts, rows.Err()
 }

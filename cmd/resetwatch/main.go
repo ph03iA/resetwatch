@@ -123,7 +123,7 @@ Usage:
   resetwatch notify --email you@example.com --from "ResetWatch <alerts@yourdomain.com>"
   resetwatch test-email --email your-resend-account-email [--from SENDER]
   resetwatch watch [--interval 1m] [--once]
-  resetwatch status [--refresh] [--json]
+  resetwatch status [--provider codex|claude] [--refresh] [--json]
   resetwatch history [--limit 20] [--json]
   resetwatch retry --id <full-alert-id>
   resetwatch demo

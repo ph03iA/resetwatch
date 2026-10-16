@@ -98,7 +98,9 @@ Limits of this approach:
 
 - Readings arrive only while Claude Code is open and after its first response in a session. ResetWatch schedules a reminder only if a reading shows a window at 100%.
 - This replaces any status line you already use.
-- The reset email says the limit **is back** only if Claude Code reported fresh data within two minutes after the reset; otherwise it says it **should be back**.
+- Only new numbers count. ResetWatch remembers what each Claude Code session last reported for each window, so an idle session repeating old numbers is ignored.
+- A window missing from a reading keeps its saved value and reminder until it resets.
+- The reset email says the limit **is back** only if new data arrived within two minutes after the reset; otherwise it says it **should be back**. An early "is back" needs Claude to report a new window with a later reset time.
 - The status line data has no account identity, so switching Claude accounts is not detected.
 - API-key and Bedrock/Vertex sessions report no plan limits; the status line stays empty.
 
@@ -110,7 +112,7 @@ Limits of this approach:
 | `resetwatch notify --email ADDRESS --from SENDER` | Save one recipient and sender; send no email. |
 | `resetwatch test-email --email ADDRESS [--from SENDER]` | Send one TEST email immediately; no Codex access, saved state, or automatic retries. |
 | `resetwatch watch [--interval 1m] [--once]` | Refresh quotas and deliver due alerts. Interval must be 15 seconds to 1 hour. |
-| `resetwatch status [--refresh] [--json]` | Show the saved observation; `--refresh` requests current data first. |
+| `resetwatch status [--provider codex\|claude] [--refresh] [--json]` | Show the saved observation (Codex if connected, otherwise Claude); `--refresh` requests current Codex data first. |
 | `resetwatch history [--limit 20] [--json]` | Show alert states and delivery attempts. Limit: 1–1000. |
 | `resetwatch claude-statusline` | Claude Code status line command: record plan usage from stdin and print a short summary. |
 | `resetwatch retry --id FULL_ALERT_ID` | Requeue an eligible failed alert, keeping the same delivery key and frozen message. |

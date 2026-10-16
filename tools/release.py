@@ -10,7 +10,7 @@ import zipfile
 
 ROOT = Path(__file__).resolve().parent.parent
 VERSION = "0.1.0"
-DEST = ROOT / "site" / "dist" / "downloads"
+DEST = ROOT / "work" / "dist"
 STAGING = ROOT / "work" / "release"
 TARGETS = (("windows", "amd64"), ("linux", "amd64"), ("darwin", "arm64"))
 DOCUMENTS = ("README.md", "LICENSE", "SECURITY.md", ".env.example")
@@ -94,7 +94,7 @@ def main():
             print(f"Built {name}", flush=True)
     package_source()
     checksums()
-    print(f"Archives and checksums: {DEST}")
+    print(f"Archives and checksums: {DEST}; attach them to GitHub release v{VERSION}")
 
 
 if __name__ == "__main__":

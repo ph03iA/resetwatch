@@ -1,6 +1,6 @@
 # ResetWatch website
 
-The install page is a dependency-free static site in `dist/`. Deploy that directory with a static-file host. The release packaging step supplies `dist/downloads/` with platform archives, source, and checksums.
+The install page is a dependency-free static site in `dist/`. Deploy that directory with a static-file host. Download links point to the GitHub release `v0.1.0`. `python tools/release.py` writes the platform archives, source archive and checksums to `work/dist/`; attach those files to that release.
 
 The page works without JavaScript for Windows installation. JavaScript enables accessible OS tabs and command copying. Fonts and their licenses are bundled locally in `dist/fonts/`; no analytics, remote font services, or third-party scripts are loaded.
 

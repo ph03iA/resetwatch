@@ -8,7 +8,7 @@ A local CLI that emails you when an exhausted Codex usage window reaches its res
 
 The installation page is local in `site/dist/`. From the project root, run `node tools/serve.mjs` and open [the local page](http://127.0.0.1:4173). This project has not been published.
 
-Download the archive for your platform from the page or `site/dist/downloads/`:
+Download the archive for your platform from the page or the [v0.1.0 GitHub release](https://github.com/ph03iA/resetwatch/releases/tag/v0.1.0):
 
 | Platform | Archive |
 | --- | --- |
@@ -18,7 +18,7 @@ Download the archive for your platform from the page or `site/dist/downloads/`:
 
 Unpack it and run the included binary. Use `./resetwatch` on Linux/macOS or `.\resetwatch.exe` in Windows PowerShell. To use `resetwatch` from any directory, put the binary in a directory already on your `PATH`.
 
-Verify downloaded archives against the accompanying `SHA256SUMS.txt`. PowerShell provides `Get-FileHash -Algorithm SHA256`; Linux provides `sha256sum`; macOS provides `shasum -a 256`. Checksums detect changed downloads, but are not a substitute for signed release provenance.
+Verify downloaded archives against the release's `SHA256SUMS.txt`. PowerShell provides `Get-FileHash -Algorithm SHA256`; Linux provides `sha256sum`; macOS provides `shasum -a 256`. Checksums detect changed downloads, but are not a substitute for signed release provenance.
 
 To install from the extracted source archive, use Go 1.27.2 or newer and run these commands from its root:
 

@@ -1,5 +1,8 @@
 "use strict";
 
+// Archives are attached to the GitHub release, not served with this page.
+const releaseBase = "https://github.com/ph03iA/resetwatch/releases/download/v0.1.0/";
+
 const platforms = {
   windows: {
     download: "resetwatch_0.1.0_windows_amd64.zip",
@@ -39,7 +42,7 @@ function updateInstallCommands(platform) {
 
 function updateDownload(platform) {
   const download = document.getElementById("platform-download");
-  download.href = `./downloads/${platform.download}`;
+  download.href = releaseBase + platform.download;
   download.firstChild.textContent = `${platform.label} `;
   document.getElementById("shell-label").textContent = platform.shell;
   document.getElementById("unpack-help").textContent = platform.help;

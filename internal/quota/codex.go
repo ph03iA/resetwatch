@@ -13,6 +13,7 @@ import (
 type Codex struct {
 	Binary  string
 	Timeout time.Duration
+	Version string // reported to Codex as the client version
 }
 
 func (provider Codex) Read(ctx context.Context) (Snapshot, error) {
@@ -34,7 +35,7 @@ func (provider Codex) Read(ctx context.Context) (Snapshot, error) {
 		return Snapshot{}, err
 	}
 	defer client.close()
-	return client.snapshot()
+	return client.snapshot(provider.Version)
 }
 
 // ResolveBinary fixes explicit executable configuration to an absolute native path.
@@ -62,13 +63,14 @@ func codexBinary(configured string) (string, error) {
 	if configured != "" {
 		return nativeBinary(configured)
 	}
-	name := "codex"
+	name, hint := "codex", ""
 	if runtime.GOOS == "windows" {
-		name = "codex.exe"
+		// npm puts only a codex.cmd shim on PATH; the native executable lives in its package.
+		name, hint = "codex.exe", `; npm installs it at %APPDATA%\npm\node_modules\@openai\codex\node_modules\@openai\codex-win32-x64\vendor\x86_64-pc-windows-msvc\bin\codex.exe`
 	}
 	path, err := exec.LookPath(name)
 	if err != nil {
-		return "", errors.New("Codex native executable not found; install Codex or set --codex-bin to its native executable")
+		return "", errors.New("Codex native executable not found; install Codex or set --codex-bin to its native executable" + hint)
 	}
 	return nativeBinary(path)
 }
@@ -81,8 +83,8 @@ func nativeBinary(path string) (string, error) {
 	return path, nil
 }
 
-func (client *codexClient) snapshot() (Snapshot, error) {
-	if err := client.initialize(); err != nil {
+func (client *codexClient) snapshot(version string) (Snapshot, error) {
+	if err := client.initialize(version); err != nil {
 		return Snapshot{}, err
 	}
 	var account codexAccountResponse
@@ -100,9 +102,9 @@ func (client *codexClient) snapshot() (Snapshot, error) {
 	return decodeSnapshot(identity, time.Now().UTC(), limits)
 }
 
-func (client *codexClient) initialize() error {
+func (client *codexClient) initialize(version string) error {
 	params := map[string]any{
-		"clientInfo": map[string]string{"name": "resetwatch", "title": "ResetWatch", "version": "0.1.0"},
+		"clientInfo": map[string]string{"name": "resetwatch", "title": "ResetWatch", "version": version},
 	}
 	var result map[string]any
 	if err := client.call(0, "initialize", params, &result); err != nil {

@@ -8,7 +8,7 @@ A local CLI that emails you when an exhausted Codex usage window reaches its res
 
 The installation page is local in `site/dist/`. From the project root, run `node tools/serve.mjs` and open [the local page](http://127.0.0.1:4173). This project has not been published.
 
-Download the archive for your platform from the page or `site/dist/downloads/`:
+Download the archive for your platform from the page or the [v0.1.0 GitHub release](https://github.com/ph03iA/resetwatch/releases/tag/v0.1.0):
 
 | Platform | Archive |
 | --- | --- |
@@ -18,7 +18,7 @@ Download the archive for your platform from the page or `site/dist/downloads/`:
 
 Unpack it and run the included binary. Use `./resetwatch` on Linux/macOS or `.\resetwatch.exe` in Windows PowerShell. To use `resetwatch` from any directory, put the binary in a directory already on your `PATH`.
 
-Verify downloaded archives against the accompanying `SHA256SUMS.txt`. PowerShell provides `Get-FileHash -Algorithm SHA256`; Linux provides `sha256sum`; macOS provides `shasum -a 256`. Checksums detect changed downloads, but are not a substitute for signed release provenance.
+Verify downloaded archives against the release's `SHA256SUMS.txt`. PowerShell provides `Get-FileHash -Algorithm SHA256`; Linux provides `sha256sum`; macOS provides `shasum -a 256`. Checksums detect changed downloads, but are not a substitute for signed release provenance.
 
 To install from the extracted source archive, use Go 1.27.2 or newer and run these commands from its root:
 
@@ -56,7 +56,7 @@ Replace `you@example.com` with your Resend account email for this no-domain test
 resetwatch connect codex --codex-bin /absolute/path/to/codex
 ```
 
-On Windows, use the native `codex.exe` path. `.cmd`, `.bat`, and `.ps1` shims are intentionally unsupported. ResetWatch never runs a shell to interpret a configured executable path.
+On Windows, use the native `codex.exe` path. If you installed Codex with npm, only a `codex.cmd` shim is on `PATH`; the native executable is at `%APPDATA%\npm\node_modules\@openai\codex\node_modules\@openai\codex-win32-x64\vendor\x86_64-pc-windows-msvc\bin\codex.exe`. `.cmd`, `.bat`, and `.ps1` shims are intentionally unsupported. ResetWatch never runs a shell to interpret a configured executable path.
 
 An explicit `--codex-bin` value is resolved and saved as an absolute path during connection, including relative paths and names found on `PATH`. Later directory or PATH changes do not change that saved executable. Without this flag, ResetWatch continues to look up Codex on `PATH` at runtime. If you previously saved a relative path, reconnect once with `--codex-bin` to normalize it.
 

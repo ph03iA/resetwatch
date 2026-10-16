@@ -10,7 +10,7 @@ import zipfile
 
 ROOT = Path(__file__).resolve().parent.parent
 VERSION = "0.1.0"
-DEST = ROOT / "site" / "dist" / "downloads"
+DEST = ROOT / "work" / "dist"
 STAGING = ROOT / "work" / "release"
 TARGETS = (("windows", "amd64"), ("linux", "amd64"), ("darwin", "arm64"))
 DOCUMENTS = ("README.md", "LICENSE", "SECURITY.md", ".env.example")
@@ -22,7 +22,7 @@ def build(target):
     folder.mkdir(parents=True, exist_ok=True)
     binary = folder / ("resetwatch.exe" if system == "windows" else "resetwatch")
     environment = dict(os.environ, GOOS=system, GOARCH=arch, CGO_ENABLED="0")
-    subprocess.run(["go", "build", "-buildvcs=false", "-trimpath", "-ldflags=-s -w", "-o", str(binary), "./cmd/resetwatch"], cwd=ROOT, env=environment, check=True)
+    subprocess.run(["go", "build", "-buildvcs=false", "-trimpath", f"-ldflags=-s -w -X main.version={VERSION}", "-o", str(binary), "./cmd/resetwatch"], cwd=ROOT, env=environment, check=True)
     for name in DOCUMENTS:
         shutil.copyfile(ROOT / name, folder / name)
     return archive_target(system, arch, folder)
@@ -94,7 +94,7 @@ def main():
             print(f"Built {name}", flush=True)
     package_source()
     checksums()
-    print(f"Archives and checksums: {DEST}")
+    print(f"Archives and checksums: {DEST}; attach them to GitHub release v{VERSION}")
 
 
 if __name__ == "__main__":

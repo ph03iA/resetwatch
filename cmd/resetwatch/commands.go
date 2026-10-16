@@ -50,7 +50,7 @@ func (a *application) connectCodex(ctx context.Context, binary string) error {
 	if err != nil {
 		return err
 	}
-	provider := quota.Codex{Binary: binary, Timeout: 15 * time.Second}
+	provider := quota.Codex{Binary: binary, Timeout: 15 * time.Second, Version: version}
 	engine := watch.Engine{DB: a.db, Provider: provider}
 	if _, err := engine.Observe(ctx, config); err != nil {
 		return fmt.Errorf("connect Codex: %w", err)
@@ -140,7 +140,7 @@ func (a *application) refresh(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	engine := watch.Engine{DB: a.db, Provider: quota.Codex{Binary: config.CodexBin, Timeout: 15 * time.Second}}
+	engine := watch.Engine{DB: a.db, Provider: quota.Codex{Binary: config.CodexBin, Timeout: 15 * time.Second, Version: version}}
 	_, err = engine.Observe(ctx, config)
 	return err
 }
@@ -190,7 +190,7 @@ func (a *application) watch(ctx context.Context, args []string) error {
 	if err != nil {
 		return err
 	}
-	engine := watch.Engine{DB: a.db, Provider: quota.Codex{Binary: config.CodexBin, Timeout: 15 * time.Second},
+	engine := watch.Engine{DB: a.db, Provider: quota.Codex{Binary: config.CodexBin, Timeout: 15 * time.Second, Version: version},
 		Sender: notify.Resend{APIKey: key}, Log: func(message string) { fmt.Fprintln(a.errOut, time.Now().Format(time.RFC3339), message) }}
 	fmt.Fprintln(a.errOut, "Watching Codex reset windows. Ctrl+C stops safely.")
 	return engine.Run(ctx, *interval, *once)

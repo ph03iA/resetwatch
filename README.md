@@ -2,7 +2,7 @@
 
 A local CLI that emails you when an exhausted Codex usage window reaches its reset time. Written in Go, with durable SQLite alerts and delivery through your Resend account.
 
-**Status:** v0.1.0 is a locally tested release candidate. The email integration is tested with simulated HTTP responses; live email delivery and inbox receipt have not been verified. There are no prebuilt binaries; build from source. This project does not operate a hosted watcher.
+**Status:** v0.1.0 is a locally tested release candidate. The email integration is tested with simulated HTTP responses, and a live reset email has been delivered end to end through Resend's test sender. There are no prebuilt binaries; build from source. This project does not operate a hosted watcher.
 
 ## Install
 

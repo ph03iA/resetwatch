@@ -89,28 +89,15 @@ func TestClaudeOldReadingsDoNotReleaseReminder(t *testing.T) {
 	}
 }
 
-func TestClaudeNewWindowReleasesReminderEarly(t *testing.T) {
+func TestClaudeNewWindowKeepsRecordedResetTime(t *testing.T) {
 	app, _ := testApplication(t)
 	runOK(t, app, "notify", "--email", "person@example.test", "--from", "alerts@example.test")
 	reset := time.Now().Add(2 * time.Hour).Unix()
 	claudeLine(t, app, "s1", map[string][2]int64{"five_hour": {100, reset}})
-	claudeLine(t, app, "s1", map[string][2]int64{"five_hour": {3, reset + 3600}}) // a new window began
-	for _, alert := range claudeAlerts(t, app) {
-		if alert.State == "pending" && alert.NextAttempt.After(time.Now()) {
-			t.Fatalf("a genuinely new window should make the reminder due now: %#v", alert)
-		}
-	}
-	// The due reminder is no longer in any reading, so only moving it keeps it after an email change.
-	runOK(t, app, "notify", "--email", "second@example.test", "--from", "alerts@example.test")
-	alerts := claudeAlerts(t, app)
-	pending := 0
-	for _, alert := range alerts {
-		if alert.State == "pending" && alert.To == "second@example.test" && !alert.NextAttempt.After(time.Now()) {
-			pending++
-		}
-	}
-	if pending != 1 {
-		t.Fatalf("due reminder was lost on email change: %#v", alerts)
+	claudeLine(t, app, "s1", map[string][2]int64{"five_hour": {3, reset + 3600}})
+	alert := onlyPending(t, claudeAlerts(t, app), "claude:five_hour", reset)
+	if alert.NextAttempt.Unix() != reset {
+		t.Fatalf("a cached Claude reading released the reminder before its recorded reset: %#v", alert)
 	}
 }
 

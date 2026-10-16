@@ -34,6 +34,19 @@ func (d *DB) Schedule(ctx context.Context, snapshot quota.Snapshot, config Confi
 		return err
 	}
 	defer tx.Rollback()
+	if err := schedule(ctx, tx, snapshot, config, now); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
+func schedule(ctx context.Context, tx *sql.Tx, snapshot quota.Snapshot, config Config, now time.Time) error {
+	if config.To == "" || config.From == "" {
+		return nil
+	}
+	if err := quota.ValidateSnapshot(snapshot); err != nil {
+		return err
+	}
 	if err := cancelReplaced(ctx, tx, snapshot, config, now); err != nil {
 		return err
 	}
@@ -45,7 +58,7 @@ func (d *DB) Schedule(ctx context.Context, snapshot quota.Snapshot, config Confi
 			return err
 		}
 	}
-	return tx.Commit()
+	return nil
 }
 
 func cancelReplaced(ctx context.Context, tx *sql.Tx, snapshot quota.Snapshot, config Config, now time.Time) error {
@@ -96,6 +109,9 @@ func scheduleWindow(ctx context.Context, tx *sql.Tx, snapshot quota.Snapshot, wi
 // provider reports allowance back in a new window before the recorded reset time.
 // Only a later reset time proves a new window began; a lower percentage alone may be an old reading.
 func releaseEarlyReset(ctx context.Context, tx *sql.Tx, snapshot quota.Snapshot, window quota.Window, now time.Time) error {
+	if snapshot.Provider == "claude" {
+		return nil // a status-line callback cannot prove fresh allowance
+	}
 	resetAt := min(snapshot.ObservedAt.Unix(), now.Unix())
 	_, err := tx.ExecContext(ctx, `UPDATE alerts SET reset_at=?,next_attempt=?,updated_at=?
  WHERE provider=? AND account_id=? AND window_id=? AND reset_at>? AND reset_at<? AND state IN ('pending','retry')`,
@@ -195,28 +211,56 @@ func (d *DB) MoveAlerts(ctx context.Context, config Config, now time.Time) error
 		return err
 	}
 	defer tx.Rollback()
-	moving, err := alertsToMove(ctx, tx, config)
-	if err != nil {
+	if err := rejectActiveDelivery(ctx, tx, config, now); err != nil {
 		return err
 	}
-	for _, alert := range moving {
-		id := alertKey(alert.Provider, alert.AccountID, alert.Window, alert.ResetAt.Unix(), config)
-		if _, err := tx.ExecContext(ctx, `INSERT INTO alerts (id,provider,account_id,window_id,reset_at,recipient,sender,next_attempt,updated_at)
- VALUES(?,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO NOTHING`, id, alert.Provider, alert.AccountID, alert.Window,
-			alert.ResetAt.Unix(), config.To, config.From, alert.NextAttempt.Unix(), now.Unix()); err != nil {
-			return err
-		}
-		if _, err := tx.ExecContext(ctx, `UPDATE alerts SET state='cancelled',last_error='notification settings changed',updated_at=?
- WHERE id=? AND state IN ('pending','retry')`, now.Unix(), alert.ID); err != nil {
-			return err
-		}
+	if err := moveAlerts(ctx, tx, config, now); err != nil {
+		return err
 	}
 	return tx.Commit()
 }
 
-func alertsToMove(ctx context.Context, tx *sql.Tx, config Config) ([]Alert, error) {
+func moveAlerts(ctx context.Context, tx *sql.Tx, config Config, now time.Time) error {
+	moving, err := alertsToMove(ctx, tx, config, now)
+	if err != nil {
+		return err
+	}
+	for _, alert := range moving {
+		if err := moveAlert(ctx, tx, alert, config, now); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func moveAlert(ctx context.Context, tx *sql.Tx, alert Alert, config Config, now time.Time) error {
+	id := alertKey(alert.Provider, alert.AccountID, alert.Window, alert.ResetAt.Unix(), config)
+	_, err := tx.ExecContext(ctx, `INSERT INTO alerts (id,provider,account_id,window_id,reset_at,recipient,sender,next_attempt,updated_at)
+ VALUES(?,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET state='pending',next_attempt=excluded.next_attempt,
+ lease_until=0,last_error='',updated_at=excluded.updated_at
+ WHERE alerts.state='cancelled' AND alerts.attempts<8 AND (alerts.first_attempt=0 OR alerts.first_attempt>?) AND alerts.reset_at>?`,
+		id, alert.Provider, alert.AccountID, alert.Window, alert.ResetAt.Unix(), config.To, config.From,
+		alert.NextAttempt.Unix(), now.Unix(), now.Add(-23*time.Hour).Unix(), now.Add(-24*time.Hour).Unix())
+	if err != nil {
+		return err
+	}
+	var state string
+	if err := tx.QueryRowContext(ctx, "SELECT state FROM alerts WHERE id=?", id).Scan(&state); err != nil {
+		return err
+	}
+	if state == "failed" || state == "cancelled" {
+		return errors.New("the destination reminder cannot be resumed; notification settings were not changed")
+	}
+	_, err = tx.ExecContext(ctx, `UPDATE alerts SET state='cancelled',lease_until=0,last_error='notification settings changed',updated_at=?
+ WHERE id=? AND (state IN ('pending','retry') OR (state='sending' AND lease_until<=?))`, now.Unix(), alert.ID, now.Unix())
+	return err
+}
+
+func alertsToMove(ctx context.Context, tx *sql.Tx, config Config, now time.Time) ([]Alert, error) {
 	rows, err := tx.QueryContext(ctx, "SELECT "+alertColumns+` FROM alerts
- WHERE state IN ('pending','retry') AND (recipient<>? OR sender<>?)`, config.To, config.From)
+ WHERE (state IN ('pending','retry') OR (state='sending' AND lease_until<=?)) AND (recipient<>? OR sender<>?)
+ AND attempts<8 AND (first_attempt=0 OR first_attempt>?) AND reset_at>?`, now.Unix(), config.To, config.From,
+		now.Add(-23*time.Hour).Unix(), now.Add(-24*time.Hour).Unix())
 	if err != nil {
 		return nil, err
 	}

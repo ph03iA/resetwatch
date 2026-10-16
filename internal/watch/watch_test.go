@@ -312,3 +312,24 @@ func must(t *testing.T, err error) {
 		t.Fatal(err)
 	}
 }
+
+func TestStepEmailsEarlyResetOfExhaustedWindowOnly(t *testing.T) {
+	engine, provider, sender, now := testEngine(t)
+	ctx := context.Background()
+	must(t, engine.Step(ctx))
+	// Codex restores allowance well before the recorded reset and starts a new window.
+	*now = now.Add(20 * time.Minute)
+	provider.snapshot = watchSnapshot(*now, now.Add(5*time.Hour), 11)
+	must(t, engine.Step(ctx))
+	if len(sender.messages) != 1 || sender.messages[0].Test || !sender.messages[0].Confirmed {
+		t.Fatalf("early reset of an exhausted window was not emailed as confirmed: %#v", sender.messages)
+	}
+	// The new window is used but never exhausted, so its reset must stay silent.
+	*now = now.Add(6 * time.Hour)
+	provider.snapshot = watchSnapshot(*now, now.Add(5*time.Hour), 40)
+	must(t, engine.Step(ctx))
+	if len(sender.messages) != 1 {
+		t.Fatalf("emailed a reset of a window that was never exhausted: %d messages", len(sender.messages))
+	}
+	assertHistory(t, engine.DB, "sent", 1)
+}

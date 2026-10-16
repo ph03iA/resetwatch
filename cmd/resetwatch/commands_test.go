@@ -62,6 +62,7 @@ func TestCLIRejectsInvalidInput(t *testing.T) {
 }
 
 func TestConfigurePersistsWithoutSending(t *testing.T) {
+	t.Chdir(t.TempDir())
 	app, output := testApplication(t)
 	args := []string{"notify", "--email", "recipient@example.com", "--from", "ResetWatch <alerts@example.com>"}
 	if err := app.run(context.Background(), args); err != nil {

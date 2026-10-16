@@ -67,12 +67,11 @@ func cancelMissing(ctx context.Context, tx *sql.Tx, snapshot quota.Snapshot, now
 }
 
 func scheduleWindow(ctx context.Context, tx *sql.Tx, snapshot quota.Snapshot, window quota.Window, config Config, now time.Time) error {
+	if window.UsedPercent < 100 {
+		return releaseEarlyReset(ctx, tx, snapshot, window, now)
+	}
 	id := alertID(snapshot, window, config)
 	if err := cancelSuperseded(ctx, tx, snapshot, window, id, now); err != nil {
-		return err
-	}
-	if window.UsedPercent < 100 {
-		_, err := tx.ExecContext(ctx, `UPDATE alerts SET state='cancelled',updated_at=? WHERE id=? AND state IN ('pending','retry') AND reset_at>?`, now.Unix(), id, now.Unix())
 		return err
 	}
 	if window.ResetsAt.Before(now.Add(-24 * time.Hour)) {
@@ -83,6 +82,16 @@ func scheduleWindow(ctx context.Context, tx *sql.Tx, snapshot quota.Snapshot, wi
  VALUES(?,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET state='pending',updated_at=excluded.updated_at
  WHERE alerts.state='cancelled' AND alerts.reset_at>?`, id, snapshot.Provider, snapshot.AccountID, window.ID,
 		window.ResetsAt.Unix(), config.To, config.From, window.ResetsAt.Unix(), now.Unix(), now.Unix())
+	return err
+}
+
+// releaseEarlyReset makes an exhausted window's future alert due now when the
+// provider reports allowance back before the recorded reset time.
+func releaseEarlyReset(ctx context.Context, tx *sql.Tx, snapshot quota.Snapshot, window quota.Window, now time.Time) error {
+	resetAt := min(snapshot.ObservedAt.Unix(), now.Unix())
+	_, err := tx.ExecContext(ctx, `UPDATE alerts SET reset_at=?,next_attempt=?,updated_at=?
+ WHERE provider=? AND account_id=? AND window_id=? AND reset_at>? AND state IN ('pending','retry')`,
+		resetAt, now.Unix(), now.Unix(), snapshot.Provider, snapshot.AccountID, window.ID, now.Unix())
 	return err
 }
 
@@ -111,9 +120,15 @@ func scanAlert(row scanner) (Alert, error) {
 }
 
 func (d *DB) Claim(ctx context.Context, now time.Time) (Alert, error) {
+	_, err := d.db.ExecContext(ctx, `UPDATE alerts SET state='failed',last_error='exhausted eight delivery attempts',lease_until=0,updated_at=?
+ WHERE attempts>=8 AND ((state IN ('pending','retry') AND next_attempt<=?) OR (state='sending' AND lease_until<=?))`,
+		now.Unix(), now.Unix(), now.Unix())
+	if err != nil {
+		return Alert{}, err
+	}
 	query := `UPDATE alerts SET state='sending',attempts=attempts+1,lease_until=?,updated_at=?,
  first_attempt=CASE WHEN first_attempt=0 THEN ? ELSE first_attempt END
- WHERE id=(SELECT id FROM alerts WHERE
+ WHERE id=(SELECT id FROM alerts WHERE attempts<8 AND
  ((state IN ('pending','retry') AND next_attempt<=?) OR (state='sending' AND lease_until<=?))
  ORDER BY next_attempt,id LIMIT 1) RETURNING ` + alertColumns
 	return scanAlert(d.db.QueryRowContext(ctx, query, now.Add(2*time.Minute).Unix(), now.Unix(), now.Unix(), now.Unix(), now.Unix()))

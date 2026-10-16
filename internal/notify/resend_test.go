@@ -59,6 +59,61 @@ func TestResendSuccess(t *testing.T) {
 	}
 }
 
+func TestExplicitTestEmailDelivery(t *testing.T) {
+	m := Message{Key: "explicit-test-unique-id", To: "person@example.com", From: "ResetWatch <alerts@example.com>", Test: true}
+	service := testService(t, func(w http.ResponseWriter, r *http.Request) {
+		checkRequestHeaders(t, r, m.Key)
+		var payload emailPayload
+		if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+			t.Errorf("decode payload: %v", err)
+		}
+		if payload.Subject != "ResetWatch: test email" {
+			t.Errorf("unexpected test subject: %q", payload.Subject)
+		}
+		if !strings.Contains(payload.Text, "No AI quota was checked") || !strings.Contains(payload.HTML, "TEST EMAIL") {
+			t.Error("test email must be clearly labeled and explain that quota was not checked")
+		}
+		receipt(w)
+	})
+	if err := service.Send(context.Background(), m); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestExplicitTestEmailIgnoresResetMetadata(t *testing.T) {
+	m := sampleMessage()
+	m.Test = true
+	m.Confirmed = true
+	m.OtherLimit = true
+	m.Provider = "<script>misleading provider</script>"
+	m.Window = "misleading window"
+	subject, plain, markup := messageContent(m)
+	if subject != "ResetWatch: test email" || !strings.Contains(plain, "does not confirm a reset or available allowance") {
+		t.Fatal("test email must not claim a quota reset or confirmed allowance")
+	}
+	for _, forbidden := range []string{m.Provider, m.Window, "CONFIRMED RESET", "EXPECTED RESET", "2026-10-15", "still exhausted"} {
+		if strings.Contains(plain+markup, forbidden) {
+			t.Errorf("test email included reset metadata: %q", forbidden)
+		}
+	}
+}
+
+func TestExplicitTestEmailValidation(t *testing.T) {
+	cases := []func(*Message){
+		func(m *Message) { m.Key = "" },
+		func(m *Message) { m.Key = strings.Repeat("x", 4097) },
+		func(m *Message) { m.To = "invalid" },
+		func(m *Message) { m.From = "alerts@example.com\r\nBcc:other@example.com" },
+	}
+	for _, mutate := range cases {
+		m := Message{Key: "test", To: "person@example.com", From: "alerts@example.com", Test: true}
+		mutate(&m)
+		if err := validateMessage(m); err == nil {
+			t.Fatal("test email bypassed key or address validation")
+		}
+	}
+}
+
 func checkRequestHeaders(t *testing.T, r *http.Request, key string) {
 	t.Helper()
 	checks := map[string]string{

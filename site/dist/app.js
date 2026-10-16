@@ -8,7 +8,6 @@ const platforms = {
     help: "In PowerShell, open the folder where you downloaded the archive.",
     executable: ".\\resetwatch.exe",
     unpack: "Expand-Archive .\\resetwatch_0.1.0_windows_amd64.zip -DestinationPath .\\resetwatch\ncd .\\resetwatch\n.\\resetwatch.exe version",
-    environment: "$env:RESEND_API_KEY = 'your_resend_api_key'",
   },
   macos: {
     download: "resetwatch_0.1.0_darwin_arm64.tar.gz",
@@ -17,7 +16,6 @@ const platforms = {
     help: "In Terminal, open the folder where you downloaded the archive. This build is for Apple silicon Macs.",
     executable: "./resetwatch",
     unpack: "tar -xzf resetwatch_0.1.0_darwin_arm64.tar.gz\nchmod +x resetwatch\n./resetwatch version",
-    environment: "export RESEND_API_KEY='your_resend_api_key'",
   },
   linux: {
     download: "resetwatch_0.1.0_linux_amd64.tar.gz",
@@ -26,7 +24,6 @@ const platforms = {
     help: "In your terminal, open the folder where you downloaded the archive. This build is for x64 Linux.",
     executable: "./resetwatch",
     unpack: "tar -xzf resetwatch_0.1.0_linux_amd64.tar.gz\nchmod +x resetwatch\n./resetwatch version",
-    environment: "export RESEND_API_KEY='your_resend_api_key'",
   },
 };
 
@@ -34,11 +31,10 @@ const tabs = [...document.querySelectorAll("[data-os]")];
 const status = document.getElementById("copy-status");
 
 function updateInstallCommands(platform) {
-  const notify = `${platform.executable} notify --email you@example.com --from 'ResetWatch <alerts@yourdomain.com>'`;
+  const notify = `${platform.executable} notify --email you@example.com --from 'ResetWatch <onboarding@resend.dev>'`;
   document.getElementById("install-command").textContent = platform.unpack;
   document.getElementById("connect-command").textContent = `${platform.executable} connect codex`;
-  document.getElementById("watch-command").textContent = `${platform.environment}\n${notify}\n${platform.executable} watch`;
-  document.getElementById("demo-command").textContent = `${platform.executable} demo`;
+  document.getElementById("watch-command").textContent = `${notify}\n${platform.executable} watch`;
 }
 
 function updateDownload(platform) {
@@ -103,21 +99,8 @@ async function copyCommand(event) {
   }
 }
 
-function toggleEmailPreview(event) {
-  const button = event.currentTarget;
-  const preview = document.getElementById("email-preview");
-  const expanded = button.getAttribute("aria-expanded") === "true";
-  preview.hidden = expanded;
-  button.setAttribute("aria-expanded", String(!expanded));
-  button.querySelector("[data-preview-label]").textContent = expanded ? "Preview the reset" : "Back to waiting";
-  document.querySelector(".product-specimen").dataset.phase = expanded ? "waiting" : "arrived";
-  document.getElementById("reset-minutes").textContent = expanded ? "42" : "00";
-  document.getElementById("dispatch-state").textContent = expanded ? "Reminder saved locally." : "Reset reminder prepared.";
-}
-
 tabs.forEach((tab) => {
   tab.addEventListener("click", () => selectPlatform(tab));
   tab.addEventListener("keydown", handleTabKey);
 });
 document.querySelectorAll("[data-copy]").forEach((button) => button.addEventListener("click", copyCommand));
-document.getElementById("preview-email").addEventListener("click", toggleEmailPreview);

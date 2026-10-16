@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"syscall"
 
+	"resetwatch/internal/notify"
 	"resetwatch/internal/store"
 )
 
@@ -31,15 +32,19 @@ func execute() int {
 }
 
 type application struct {
-	out    io.Writer
-	errOut io.Writer
-	getenv func(string) string
-	db     *store.DB
+	out        io.Writer
+	errOut     io.Writer
+	getenv     func(string) string
+	db         *store.DB
+	testSender notify.Sender
 }
 
 func (a *application) run(ctx context.Context, args []string) error {
 	if len(args) == 0 {
 		return a.help(nil)
+	}
+	if args[0] == "test-email" {
+		return a.testEmail(ctx, args[1:])
 	}
 	local := map[string]func([]string) error{
 		"help": a.help, "--help": a.help, "-h": a.help,
@@ -113,6 +118,7 @@ func (a *application) help(args []string) error {
 Usage:
   resetwatch connect codex [--codex-bin /path/to/codex]
   resetwatch notify --email you@example.com --from "ResetWatch <alerts@yourdomain.com>"
+  resetwatch test-email --email your-resend-account-email [--from SENDER]
   resetwatch watch [--interval 1m] [--once]
   resetwatch status [--refresh] [--json]
   resetwatch history [--limit 20] [--json]
@@ -120,8 +126,11 @@ Usage:
   resetwatch demo
   resetwatch version
 
-Requires Codex signed in with ChatGPT. No inference requests are made.
-Set RESEND_API_KEY in the watcher environment. The sender must be verified in Resend.
+Quota commands require Codex signed in with ChatGPT. No inference requests are made.
+Save RESEND_API_KEY in .env in your current folder, or set it in the environment.
+An existing environment key takes priority. The sender must be verified in Resend.
+test-email sends one labeled test immediately without a Codex connection.
+Its default resend.dev sender can send only to your Resend account email.
 Set RESETWATCH_HOME to override the private local state directory.
 The watcher must remain running on an awake, connected computer.
 Emails distinguish scheduled resets from freshly confirmed allowance.`)

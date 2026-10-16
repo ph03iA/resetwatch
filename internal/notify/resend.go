@@ -136,11 +136,26 @@ func validEmailID(id string) bool {
 
 func statusError(response *http.Response) error {
 	code := response.StatusCode
+	retryable := code == http.StatusRequestTimeout || code == http.StatusTooManyRequests || code >= 500
+	if code == http.StatusConflict {
+		retryable = concurrentIdempotentRequest(response.Body)
+	}
 	return &deliveryError{
 		message:    fmt.Sprintf("email service returned HTTP %d", code),
-		retryable:  code == http.StatusRequestTimeout || code == http.StatusTooManyRequests || code >= 500,
+		retryable:  retryable,
 		retryAfter: parseRetryAfter(response.Header.Get("Retry-After"), time.Now()),
 	}
+}
+
+func concurrentIdempotentRequest(body io.Reader) bool {
+	data, err := io.ReadAll(io.LimitReader(body, maxResponse+1))
+	if err != nil || len(data) > maxResponse {
+		return false
+	}
+	var result struct {
+		Name string `json:"name"`
+	}
+	return json.Unmarshal(data, &result) == nil && result.Name == "concurrent_idempotent_requests"
 }
 
 func parseRetryAfter(value string, now time.Time) time.Duration {

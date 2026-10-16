@@ -7,7 +7,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"strings"
 	"time"
 
 	"resetwatch/internal/notify"
@@ -16,32 +15,52 @@ import (
 )
 
 func (a *application) connect(ctx context.Context, args []string) error {
-	if len(args) == 0 || args[0] != "codex" {
-		return errors.New("supported provider: codex; run resetwatch connect codex")
-	}
-	flags := a.flags("connect codex")
-	binary := flags.String("codex-bin", "", "native Codex executable path")
-	if err := flags.Parse(args[1:]); err != nil {
-		return err
-	}
-	if err := noArguments(flags.Args()); err != nil {
-		return err
-	}
-	config, err := a.db.Config(ctx)
+	binary, err := a.connectFlags(args)
 	if err != nil {
 		return err
 	}
-	provider := quota.Codex{Binary: *binary, Timeout: 15 * time.Second}
-	engine := watch.Engine{DB: a.db, Provider: provider}
-	if _, err := engine.Observe(ctx, config); err != nil {
+	resolved, err := quota.ResolveBinary(binary)
+	if err != nil {
 		return fmt.Errorf("connect Codex: %w", err)
 	}
-	config.CodexBin = *binary
-	if err := a.db.SaveConfig(ctx, config); err != nil {
+	if err := a.connectCodex(ctx, resolved); err != nil {
 		return err
 	}
 	fmt.Fprintln(a.out, "Connected to Codex. Account credentials remain with Codex.")
 	return nil
+}
+
+func (a *application) connectFlags(args []string) (string, error) {
+	if len(args) == 0 || args[0] != "codex" {
+		return "", errors.New("supported provider: codex; run resetwatch connect codex")
+	}
+	flags := a.flags("connect codex")
+	binary := flags.String("codex-bin", "", "native Codex executable path")
+	if err := flags.Parse(args[1:]); err != nil {
+		return "", err
+	}
+	if err := noArguments(flags.Args()); err != nil {
+		return "", err
+	}
+	return *binary, nil
+}
+
+func (a *application) connectCodex(ctx context.Context, binary string) error {
+	config, err := a.db.Config(ctx)
+	if err != nil {
+		return err
+	}
+	provider := quota.Codex{Binary: binary, Timeout: 15 * time.Second}
+	engine := watch.Engine{DB: a.db, Provider: provider}
+	if _, err := engine.Observe(ctx, config); err != nil {
+		return fmt.Errorf("connect Codex: %w", err)
+	}
+	config, err = a.db.Config(ctx)
+	if err != nil {
+		return err
+	}
+	config.CodexBin = binary
+	return a.db.SaveConfig(ctx, config)
 }
 
 func (a *application) configure(ctx context.Context, args []string) error {
@@ -68,7 +87,7 @@ func (a *application) configure(ctx context.Context, args []string) error {
 	if err := a.reschedule(ctx); err != nil {
 		return err
 	}
-	fmt.Fprintln(a.out, "Email settings saved. Set RESEND_API_KEY, then run resetwatch watch.")
+	fmt.Fprintln(a.out, "Email settings saved. Save RESEND_API_KEY in .env or set it in the environment, then run resetwatch watch.")
 	return nil
 }
 
@@ -167,9 +186,9 @@ func (a *application) watch(ctx context.Context, args []string) error {
 	if err := notify.ValidateAddresses(config.To, config.From); err != nil {
 		return errors.New("configure email first: resetwatch notify --email ... --from ...")
 	}
-	key := strings.TrimSpace(a.getenv("RESEND_API_KEY"))
-	if key == "" {
-		return errors.New("RESEND_API_KEY is missing from the watcher environment")
+	key, err := a.resendAPIKey()
+	if err != nil {
+		return err
 	}
 	engine := watch.Engine{DB: a.db, Provider: quota.Codex{Binary: config.CodexBin, Timeout: 15 * time.Second},
 		Sender: notify.Resend{APIKey: key}, Log: func(message string) { fmt.Fprintln(a.errOut, time.Now().Format(time.RFC3339), message) }}

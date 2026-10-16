@@ -4,7 +4,7 @@
 
 - Name the npm `codex.exe` location in the Windows not-found error and README.
 - Set the version once: release builds stamp `main.version`, which is also reported to Codex.
-- Serve downloads from the GitHub release `v0.1.0` instead of committing archives: site links point to release assets and `tools/release.py` writes to the ignored `work/dist/`.
+- Drop prebuilt downloads: the site and README now show clone-and-build with Go, archives are no longer committed, and the release packaging scripts and their CI step are removed.
 - Email immediately when Codex resets an exhausted window early, instead of silently cancelling the alert. Windows that never reach 100% still send nothing.
 - Remove countdown/email previews, mock emails and demo controls from the installation page, retaining the original decorative envelope, real setup instructions and reset-evidence notes.
 - Load the Resend key once from a local `.env` for both watcher and test emails, with process-environment precedence, bounded parsing and redacted errors. Include a blank `.env.example` and exclude real environment files from Git and release archives.

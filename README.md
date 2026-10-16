@@ -2,38 +2,34 @@
 
 A local CLI that emails you when an exhausted Codex usage window reaches its reset time. Written in Go, with durable SQLite alerts and delivery through your Resend account.
 
-**Status:** v0.1.0 is a locally tested release candidate. The email integration is tested with simulated HTTP responses; live email delivery and inbox receipt have not been verified. Packaged binaries are unsigned. This project does not operate a hosted watcher.
+**Status:** v0.1.0 is a locally tested release candidate. The email integration is tested with simulated HTTP responses; live email delivery and inbox receipt have not been verified. There are no prebuilt binaries; build from source. This project does not operate a hosted watcher.
 
 ## Install
 
 The installation page is local in `site/dist/`. From the project root, run `node tools/serve.mjs` and open [the local page](http://127.0.0.1:4173). This project has not been published.
 
-Download the archive for your platform from the page or the [v0.1.0 GitHub release](https://github.com/ph03iA/resetwatch/releases/tag/v0.1.0):
-
-| Platform | Archive |
-| --- | --- |
-| Windows x64 | `resetwatch_0.1.0_windows_amd64.zip` |
-| Linux x64 | `resetwatch_0.1.0_linux_amd64.tar.gz` |
-| macOS Apple silicon | `resetwatch_0.1.0_darwin_arm64.tar.gz` |
-
-Unpack it and run the included binary. Use `./resetwatch` on Linux/macOS or `.\resetwatch.exe` in Windows PowerShell. To use `resetwatch` from any directory, put the binary in a directory already on your `PATH`.
-
-Verify downloaded archives against the release's `SHA256SUMS.txt`. PowerShell provides `Get-FileHash -Algorithm SHA256`; Linux provides `sha256sum`; macOS provides `shasum -a 256`. Checksums detect changed downloads, but are not a substitute for signed release provenance.
-
-To install from the extracted source archive, use Go 1.27.2 or newer and run these commands from its root:
+There are no prebuilt downloads. Install Git and Go 1.27.2 or newer, then clone and build:
 
 ```sh
-go install ./cmd/resetwatch
-resetwatch version
+git clone https://github.com/ph03iA/resetwatch.git
+cd resetwatch
+go build -o resetwatch ./cmd/resetwatch
+./resetwatch version
 ```
 
-Go installs to `GOBIN`, or to `GOPATH/bin` when `GOBIN` is unset. Add that directory to your `PATH` if needed. The module path is local (`resetwatch`); there is no published GitHub installation URL.
-
-For a local Windows source build, run this from the project root:
+On Windows PowerShell, build `resetwatch.exe` instead and run it as `.\resetwatch.exe`:
 
 ```powershell
-go build -o .\bin\resetwatch.exe ./cmd/resetwatch
-.\bin\resetwatch.exe test-email --email 'YOUR_RESEND_ACCOUNT_EMAIL'
+go build -o resetwatch.exe ./cmd/resetwatch
+.\resetwatch.exe version
+```
+
+To use `resetwatch` from any directory, run `go install ./cmd/resetwatch` instead. Go installs to `GOBIN`, or to `GOPATH/bin` when `GOBIN` is unset; add that directory to your `PATH` if needed. The module path is local (`resetwatch`), so `go install github.com/...@latest` does not work.
+
+To test email delivery, run this from the cloned folder:
+
+```powershell
+.\resetwatch.exe test-email --email 'YOUR_RESEND_ACCOUNT_EMAIL'
 ```
 
 Before testing, create `.env` from `.env.example` in the project folder if it does not already exist, and paste your Resend key after `RESEND_API_KEY=`. Keep the command's working directory in that folder. Replace the recipient with your own value. This sends one email labeled **TEST**, without connecting to Codex or opening the state database. The default sender is `ResetWatch <onboarding@resend.dev>`, which can only send to your own Resend account email unless you use a verified sender domain. Provider acceptance does not guarantee inbox receipt. There are no automatic retries; rerunning the command sends another test.
@@ -167,10 +163,9 @@ The Codex protocol and account eligibility can change. Missing or malformed quot
 go test ./...
 go vet ./...
 go run github.com/fzipp/gocyclo/cmd/gocyclo@v0.6.0 -over 10 -ignore '_test.go' cmd internal
-python tools/test_release.py
 node --check site/dist/app.js
 ```
 
-CI also checks formatting and runs `go test -race ./...` on Linux. The SQLite driver is pure Go, so regular builds do not require a C compiler. Race instrumentation requires a supported Go platform and C toolchain. On Windows, use a 64-bit Go installation; the supplied Windows binary targets `amd64`.
+CI also checks formatting and runs `go test -race ./...` on Linux. The SQLite driver is pure Go, so regular builds do not require a C compiler. Race instrumentation requires a supported Go platform and C toolchain.
 
-Serve `site/dist/` with a static server to preview the website. The page provides platform-specific installation commands, downloads, product behavior and operating notes. The website does not connect to accounts or collect API keys. Manrope and Instrument Serif are self-hosted with their SIL Open Font License notices in `site/dist/fonts/`. See [AGENTS.md](AGENTS.md) for the complexity and implementation rules, [SECURITY.md](SECURITY.md) for handling sensitive data, and [CHANGELOG.md](CHANGELOG.md) for release scope.
+Serve `site/dist/` with a static server to preview the website. The page provides platform-specific build commands, product behavior and operating notes. The website does not connect to accounts or collect API keys. Manrope and Instrument Serif are self-hosted with their SIL Open Font License notices in `site/dist/fonts/`. See [AGENTS.md](AGENTS.md) for the complexity and implementation rules, [SECURITY.md](SECURITY.md) for handling sensitive data, and [CHANGELOG.md](CHANGELOG.md) for release scope.

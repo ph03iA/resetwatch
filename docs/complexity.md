@@ -327,3 +327,16 @@ Local reset time is computed once in `compose` and frozen in `notify.Message.Loc
 | quota.validSessionID | 3 | Removed |
 
 Behavior verified: full suite and `go test -race` (64-bit build) pass; `gocyclo -over 10 cmd internal` passes. New tests cover the frozen local time surviving a time-zone change, `compose` using the user's zone, and Claude data without `session_id`.
+
+## Still-exhausted warning — 2026-10-16
+
+`compose` adds the "another limit is still used up" warning from any same-account reading taken after the reset, before the confirmation check, so unconfirmed Codex and Claude emails keep it. Windows whose reset already passed no longer count.
+
+| Function | Before CC | After CC |
+| --- | ---: | ---: |
+| watch.compose | 7 | 7 |
+| watch.freshForAlert | 7 | 3 |
+| watch.observedAfterReset | New | 5 |
+| watch.windowAvailable | New | 2 |
+
+Behavior verified: new `TestStillExhaustedWindowWarnsWithoutConfirmation` failed before the change (3 cases) and passes after; full suite and `go test -race` (64-bit build) pass.

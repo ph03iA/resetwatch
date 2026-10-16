@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"slices"
 	"time"
 
 	"resetwatch/internal/notify"
@@ -142,21 +143,30 @@ func compose(alert store.Alert, snapshot *quota.Snapshot, now time.Time) notify.
 	message := notify.Message{Key: alert.ID, To: alert.To, From: alert.From,
 		Provider: alert.Provider, Window: alert.Window, ResetAt: alert.ResetAt, Duration: windowDuration(snapshot, alert),
 		LocalResetAt: alert.ResetAt.Local().Format("3:04 PM MST")}
-	if !freshForAlert(snapshot, alert, now) {
+	if !observedAfterReset(snapshot, alert, now) {
 		return message
 	}
+	// Usage never drops inside a window, so a window still at 100% before its reset is still used up,
+	// even when the reading is too old or unconfirmed to prove the alert's own window is back.
 	for _, window := range snapshot.Windows {
-		if window.UsedPercent >= 100 {
+		if window.UsedPercent >= 100 && window.ResetsAt.After(now) {
 			message.OtherLimit = true
 		}
-		if window.ID == alert.Window && window.UsedPercent < 100 {
-			message.Confirmed = true
-		}
 	}
-	if message.OtherLimit {
-		message.Confirmed = false
-	}
+	message.Confirmed = !message.OtherLimit && freshForAlert(snapshot, alert, now) && windowAvailable(snapshot, alert.Window)
 	return message
+}
+
+func windowAvailable(snapshot *quota.Snapshot, id string) bool {
+	return slices.ContainsFunc(snapshot.Windows, func(w quota.Window) bool { return w.ID == id && w.UsedPercent < 100 })
+}
+
+// observedAfterReset reports whether the reading is for this alert's account and was taken after its reset.
+func observedAfterReset(snapshot *quota.Snapshot, alert store.Alert, now time.Time) bool {
+	if snapshot == nil || snapshot.AccountID != alert.AccountID || snapshot.Provider != alert.Provider {
+		return false
+	}
+	return !snapshot.ObservedAt.Before(alert.ResetAt) && !snapshot.ObservedAt.After(now.Add(time.Minute))
 }
 
 // windowDuration finds the alert window's length in a snapshot of the same account; zero when unknown.
@@ -172,20 +182,9 @@ func windowDuration(snapshot *quota.Snapshot, alert store.Alert) time.Duration {
 	return 0
 }
 
+// freshForAlert reports whether the reading can prove the reset: explicit permission, observed after it, within two minutes.
 func freshForAlert(snapshot *quota.Snapshot, alert store.Alert, now time.Time) bool {
-	if snapshot == nil {
-		return false
-	}
-	if !confirmedUsageAllowed(snapshot) {
-		return false
-	}
-	if snapshot.AccountID != alert.AccountID || snapshot.Provider != alert.Provider {
-		return false
-	}
-	if snapshot.ObservedAt.Before(alert.ResetAt) || snapshot.ObservedAt.After(now.Add(time.Minute)) {
-		return false
-	}
-	return now.Sub(snapshot.ObservedAt) <= 2*time.Minute
+	return observedAfterReset(snapshot, alert, now) && confirmedUsageAllowed(snapshot) && now.Sub(snapshot.ObservedAt) <= 2*time.Minute
 }
 
 func confirmedUsageAllowed(snapshot *quota.Snapshot) bool {

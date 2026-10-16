@@ -25,7 +25,12 @@ func TestDecodeClaudeStatusLine(t *testing.T) {
 	if snapshot.Windows[1].Duration != 7*24*time.Hour {
 		t.Fatalf("unexpected weekly window: %#v", snapshot.Windows[1])
 	}
-	if _, err := DecodeClaudeStatusLine(strings.NewReader("\xef\xbb\xbf"+input+"\r\n"), now); err != nil {
+}
+
+func TestDecodeClaudeStatusLineAcceptsByteOrderMark(t *testing.T) {
+	now := time.Date(2030, 1, 2, 10, 0, 0, 0, time.UTC)
+	input := "\xef\xbb\xbf" + `{"rate_limits":{"five_hour":{"used_percentage":42,"resets_at":1893582000}}}` + "\r\n"
+	if _, err := DecodeClaudeStatusLine(strings.NewReader(input), now); err != nil {
 		t.Fatalf("PowerShell-piped input with a byte-order mark was rejected: %v", err)
 	}
 }

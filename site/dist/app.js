@@ -74,10 +74,13 @@ function selectCommandText(target) {
 function showCopySuccess(button) {
   button.firstChild.textContent = "Copied ";
   button.dataset.copied = "true";
+  // The button already shows "Copied"; keep the message for screen readers only.
+  status.dataset.quiet = "true";
   status.textContent = "Commands copied to your clipboard.";
   window.setTimeout(() => {
     button.firstChild.textContent = "Copy ";
     delete button.dataset.copied;
+    status.textContent = "";
   }, 2200);
 }
 
@@ -89,6 +92,7 @@ async function copyCommand(event) {
     showCopySuccess(button);
   } catch {
     selectCommandText(target);
+    delete status.dataset.quiet;
     status.textContent = "Clipboard access is unavailable. The commands are selected; use your keyboard to copy.";
   }
 }

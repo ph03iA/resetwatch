@@ -114,6 +114,7 @@ kbd { font: 10px var(--mono); color: #d8d6c5; background: #303227; border: 1px s
 .release-details p { color: #99998c; font-size: 11px; line-height: 1.8; margin-top: 9px; }
 .sender-note { font-size: 11px; line-height: 1.9; color: #aaa99b; border-top: 1px solid #3c3e33; padding-top: 16px; }
 .copy-status { min-height: 18px; font-size: 12px; color: #d8b48d; margin: 9px 0 16px; line-height: 1.8; }
+.copy-status[data-quiet] { color: transparent; user-select: none; }
 .notes-section { border-top: 1px solid var(--line); }
 .notes-layout { display: grid; grid-template-columns: minmax(0, .8fr) minmax(0, 1.2fr); column-gap: 100px; padding-block: 90px 105px; }
 .notes-intro { align-self: start; position: sticky; top: 40px; }

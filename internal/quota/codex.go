@@ -5,7 +5,6 @@ import (
 	"errors"
 	"os/exec"
 	"path/filepath"
-	"runtime"
 	"strings"
 	"time"
 )
@@ -63,16 +62,7 @@ func codexBinary(configured string) (string, error) {
 	if configured != "" {
 		return nativeBinary(configured)
 	}
-	name, hint := "codex", ""
-	if runtime.GOOS == "windows" {
-		// npm puts only a codex.cmd shim on PATH; the native executable lives in its package.
-		name, hint = "codex.exe", `; npm installs it at %APPDATA%\npm\node_modules\@openai\codex\node_modules\@openai\codex-win32-x64\vendor\x86_64-pc-windows-msvc\bin\codex.exe`
-	}
-	path, err := exec.LookPath(name)
-	if err != nil {
-		return "", errors.New("Codex native executable not found; install Codex or set --codex-bin to its native executable" + hint)
-	}
-	return nativeBinary(path)
+	return defaultCodexBinary()
 }
 
 func nativeBinary(path string) (string, error) {

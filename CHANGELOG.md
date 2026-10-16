@@ -2,8 +2,10 @@
 
 ## Unreleased — 2026-10-16
 
+- Whole-repository audit fixes: preserve Codex backend usage permission; keep Claude resets expected-only; atomically save readings, notification settings and reminders; recover expired claims and cancelled destinations without reviving completed events; render retry times in UTC; document watcher restarts after connection changes; correct Claude support copy and keep the keyboard skip link above the header.
+
 - Claude support: `resetwatch claude-statusline` reads Claude Code's documented status line rate limits (5-hour and weekly) and schedules reset reminders. The watcher skips Codex polling until Codex is connected and uses saved readings for Claude alerts.
-- Claude readings count only when a session reports changed numbers; partial readings keep omitted windows and their reminders; an early reset needs a later reset time; `notify` moves undelivered reminders to the new address and schedules from saved Codex and Claude readings; `status` shows Claude and accepts `--provider`.
+- Claude callbacks save readings and reminders together, preserve independently omitted windows and never claim confirmed allowance. `notify` schedules saved observations on first setup and moves outstanding reminders when addresses change; `status` shows Claude and accepts `--provider`.
 - Friendlier reset email: subjects like "Your Codex 5-hour limit is back. Get back to work", the window named by length (5-hour, weekly), local reset time with exact UTC kept, and a styled HTML card. Unconfirmed resets still say "should be back".
 - Name the npm `codex.exe` location in the Windows not-found error and README.
 - Set the version once: release builds stamp `main.version`, which is also reported to Codex.

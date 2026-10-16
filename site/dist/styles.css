@@ -26,7 +26,7 @@ button:focus-visible, a:focus-visible, [tabindex]:focus-visible { outline: 2px s
 h1, h2, h3, p { margin: 0; }
 p { text-wrap: pretty; }
 .wrap { width: min(1220px, calc(100% - 128px)); margin-inline: auto; }
-.skip-link { position: fixed; top: 10px; left: 10px; z-index: 5; padding: 12px 18px; background: var(--text); color: var(--bg); opacity: 0; pointer-events: none; transform: translateY(-150%); }
+.skip-link { position: fixed; top: 10px; left: 10px; z-index: 11; padding: 12px 18px; background: var(--text); color: var(--bg); opacity: 0; pointer-events: none; transform: translateY(-150%); }
 .skip-link:focus { transform: translateY(0); opacity: 1; pointer-events: auto; }
 .site-header { display: flex; justify-content: space-between; align-items: center; min-height: 100px; border-bottom: 1px solid var(--line); }
 .wordmark { display: inline-flex; align-items: center; gap: 9px; font-size: 22px; font-weight: 600; letter-spacing: -1px; }

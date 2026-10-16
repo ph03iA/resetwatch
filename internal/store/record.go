@@ -37,7 +37,7 @@ func (d *DB) RecordSnapshot(ctx context.Context, snapshot quota.Snapshot, now ti
 	if err != nil {
 		return err
 	}
-	if err := schedule(ctx, tx, snapshot, config, now); err != nil {
+	if err := schedule(ctx, tx, snapshot, config, now, true); err != nil {
 		return err
 	}
 	return tx.Commit()

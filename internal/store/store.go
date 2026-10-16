@@ -20,9 +20,10 @@ import (
 type DB struct{ db *sql.DB }
 
 type Config struct {
-	To       string `json:"email"`
-	From     string `json:"from"`
-	CodexBin string `json:"codex_bin,omitempty"`
+	To        string `json:"email"`
+	From      string `json:"from"`
+	CodexBin  string `json:"codex_bin,omitempty"`
+	Providers string `json:"providers,omitempty"`
 }
 
 type Alert struct {

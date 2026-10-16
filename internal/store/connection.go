@@ -14,6 +14,7 @@ func (d *DB) SaveCodexBinary(ctx context.Context, binary string) error {
 		return err
 	}
 	config.CodexBin = binary
+	config.Providers = config.withProvider("codex")
 	if err := saveConfig(ctx, tx, config); err != nil {
 		return err
 	}

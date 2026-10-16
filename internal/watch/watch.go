@@ -14,11 +14,12 @@ import (
 )
 
 type Engine struct {
-	DB       *store.DB
-	Provider quota.Provider
-	Sender   notify.Sender
-	Now      func() time.Time
-	Log      func(string)
+	DB              *store.DB
+	Provider        quota.Provider
+	ProviderFactory func(store.Config) quota.Provider
+	Sender          notify.Sender
+	Now             func() time.Time
+	Log             func(string)
 }
 
 func (e *Engine) clock() time.Time {
@@ -35,11 +36,15 @@ func (e *Engine) log(message string) {
 }
 
 func (e *Engine) Step(ctx context.Context) error {
+	config, err := e.DB.Config(ctx)
+	if err != nil {
+		return err
+	}
 	// A nil Provider means nothing to poll (Claude readings arrive from its status line instead).
 	var snapshot *quota.Snapshot
 	var observationErr error
-	if e.Provider != nil {
-		snapshot, observationErr = e.Observe(ctx)
+	if provider := e.cycleProvider(config); provider != nil {
+		snapshot, observationErr = e.observe(ctx, provider)
 	}
 	if observationErr != nil {
 		e.log("Quota refresh unavailable; due emails will describe expected resets only.")
@@ -50,7 +55,21 @@ func (e *Engine) Step(ctx context.Context) error {
 
 // Observe reads the provider and records the reading; RecordSnapshot loads current settings itself.
 func (e *Engine) Observe(ctx context.Context) (*quota.Snapshot, error) {
-	snapshot, err := e.Provider.Read(ctx)
+	return e.observe(ctx, e.Provider)
+}
+
+func (e *Engine) cycleProvider(config store.Config) quota.Provider {
+	if !config.Selected("codex") {
+		return nil
+	}
+	if e.ProviderFactory != nil {
+		return e.ProviderFactory(config)
+	}
+	return e.Provider
+}
+
+func (e *Engine) observe(ctx context.Context, provider quota.Provider) (*quota.Snapshot, error) {
+	snapshot, err := provider.Read(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -95,6 +114,9 @@ func (e *Engine) sendAlert(ctx context.Context, alert store.Alert, snapshot *quo
 	if message.Provider == "claude" && message.Confirmed {
 		return e.DB.Finish(ctx, alert, "cancelled", "stored Claude confirmation cannot be safely retried; inspect the previous delivery", e.clock(), e.clock())
 	}
+	if err := e.DB.ValidateDelivery(ctx, alert, e.clock()); err != nil {
+		return err
+	}
 	err = e.Sender.Send(ctx, message)
 	if err != nil {
 		return e.recordFailure(ctx, alert, err)
@@ -120,6 +142,9 @@ func (e *Engine) alertSnapshot(ctx context.Context, alert store.Alert, current *
 }
 
 func (e *Engine) cancelReason(ctx context.Context, alert store.Alert, config store.Config) string {
+	if !config.Selected(alert.Provider) {
+		return "provider disabled"
+	}
 	if alert.To != config.To || alert.From != config.From {
 		return "notification settings changed"
 	}

@@ -31,8 +31,8 @@ function selectPlatform(tab) {
   document.getElementById("shell-label").textContent = platform.shell;
   document.getElementById("unpack-help").textContent = platform.help;
   document.getElementById("install-command").textContent = `${clone}${run} version`;
-  document.getElementById("connect-command").textContent = `${run} connect codex`;
-  document.getElementById("watch-command").textContent = `${run} notify --email you@example.com --from "ResetWatch <onboarding@resend.dev>"\n${run} watch`;
+  document.getElementById("connect-command").textContent = `${run} setup`;
+  document.getElementById("watch-command").textContent = `${run} watch`;
 }
 
 function handleTabKey(event) {

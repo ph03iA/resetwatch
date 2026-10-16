@@ -40,7 +40,40 @@ To test email delivery, run this from the cloned folder:
 
 Before testing, create `.env` from `.env.example` in the project folder if it does not already exist, and paste your Resend key after `RESEND_API_KEY=`. Keep the command's working directory in that folder. Replace the recipient with your own value. This sends one email labeled **TEST**, without connecting to Codex or opening the state database. The default sender is `ResetWatch <onboarding@resend.dev>`, which can only send to your own Resend account email unless you use a verified sender domain. Provider acceptance does not guarantee inbox receipt. There are no automatic retries; rerunning the command sends another test.
 
-## Connect and watch
+## Guided setup
+
+After building, run the wizard from the folder where you will keep the local `.env` key file:
+
+```sh
+./resetwatch setup
+./resetwatch watch
+```
+
+On Windows, use `.\resetwatch.exe setup` and `.\resetwatch.exe watch`.
+
+Setup asks whether to watch **Codex**, **Claude**, or **both**, then asks for your reminder email and sender. It reuses an existing key from the environment or current folder's `.env`; otherwise it asks for the key without displaying it and saves it to `.env`. The default sender is `ResetWatch <onboarding@resend.dev>`, which only reaches your Resend account email. Other recipients require a verified sender domain.
+
+For Codex, setup checks the native executable and subscription sign-in without inference. Windows npm installations are discovered automatically; use `--codex-bin` for a custom location. Missing sign-in is fixed with `codex login` in another terminal, then Retry. Setup can explicitly skip an unavailable provider and finish with the working one; skipping both leaves the prior setup active.
+
+For Claude, setup installs a user-level status line using the absolute ResetWatch executable and state directory. It asks before replacing another display and keeps a private recovery record of the original entry. Claude remains **awaiting first reading** until Claude Code supplies plan usage. User settings use `CLAUDE_CONFIG_DIR` when configured, otherwise `~/.claude/settings.json`; project or managed settings may override them. Setup does not read Claude credentials or run Claude for you.
+
+Setup offers one optional test email, defaulting to No. An accepted test is not proof of inbox placement. Failed tests retain the setup, allowing a later `resetwatch test-email`. The watcher starts only when you run it separately.
+
+Rerun setup to change providers or email. Provider and executable changes apply on the running watcher's next cycle. Deselecting a provider cancels its unsent reminders; a live affected email delivery must finish or its lease expire before the change can be saved. Re-enabling does not replay cached reminders: a new provider reading can rearm an eligible future reset, keeping any original frozen payload and retry budget. Completed reminders are never resent. Changing the API key still requires restarting the watcher.
+
+When Claude is deselected, ResetWatch restores only its own status-line entry. It preserves later user edits and unrelated settings. If restoration fails, Claude stays disabled and the recovery record remains for another setup run. Malformed settings are left untouched. An interrupted setup can leave a backed-up hook or key file prepared before activation; setup reports this, and rerunning is safe.
+
+For scripts, provide required values and an existing key through the environment or `.env`:
+
+```sh
+resetwatch setup --non-interactive --providers both --email you@example.com
+```
+
+The saved sender is reused, or the `resend.dev` sender is selected for a new setup. Add `--from 'ResetWatch <alerts@yourdomain.com>'` for your verified sender, `--codex-bin PATH` for a native executable override, `--replace-statusline` to explicitly approve replacing an existing Claude display, and `--test-email` to request a real test send. Scripts never prompt or silently skip failed providers; API keys are not accepted as command-line arguments.
+
+`resetwatch status` shows every provider selected by setup, including providers awaiting readings. `status --json` and `status --provider NAME --json` keep the single-snapshot format; `status --all --json` returns an object keyed by selected provider, with `null` when no reading exists. Old installations without an explicit selection retain their manual behavior. `connect codex`, the new `connect claude`, and `notify` remain available individually.
+
+## Manual connection and email setup
 
 Requirements: a native Codex executable, a ChatGPT subscription sign-in exposing quota data, and a Resend API key. You can test without a domain by sending from `onboarding@resend.dev` to the email address associated with your Resend account. Sending to other recipients requires a domain verified in Resend. API-key-only Codex accounts do not provide the supported account quota interface.
 
@@ -58,11 +91,11 @@ Replace `you@example.com` with your Resend account email for this no-domain test
 resetwatch connect codex --codex-bin /absolute/path/to/codex
 ```
 
-On Windows, use the native `codex.exe` path. If you installed Codex with npm, only a `codex.cmd` shim is on `PATH`; the native executable is at `%APPDATA%\npm\node_modules\@openai\codex\node_modules\@openai\codex-win32-x64\vendor\x86_64-pc-windows-msvc\bin\codex.exe`. `.cmd`, `.bat`, and `.ps1` shims are intentionally unsupported. ResetWatch never runs a shell to interpret a configured executable path.
+On Windows, use the native `codex.exe` path. If you installed Codex with npm, only a `codex.cmd` shim is on `PATH`; ResetWatch checks its native package under `%APPDATA%\npm\node_modules\@openai\codex`, including x64 and ARM64 layouts. Use `--codex-bin` if your package lives elsewhere. `.cmd`, `.bat`, and `.ps1` shims are intentionally unsupported. ResetWatch never runs a shell to interpret a configured executable path.
 
-An explicit `--codex-bin` value is resolved and saved as an absolute path during connection, including relative paths and names found on `PATH`. Later directory or PATH changes do not change that saved executable. Without this flag, ResetWatch continues to look up Codex on `PATH` at runtime. If you previously saved a relative path, reconnect once with `--codex-bin` to normalize it.
+An explicit `--codex-bin` value is resolved and saved as an absolute path during connection, including relative paths and names found on `PATH`. Later directory or PATH changes do not change that saved executable. Manual connection without this flag discovers Codex at runtime; guided setup saves its discovered absolute path. If you previously saved a relative path, reconnect once with `--codex-bin` to normalize it.
 
-Restart any running watcher after connecting or reconnecting Codex, including after changing its executable. The watcher selects its quota provider when it starts; connecting in another terminal does not update that running process.
+Provider selection and saved Codex executable changes are read at the next watcher cycle. Notification settings are also checked before delivery.
 
 Save your Resend key once in a file named `.env` in the folder where you run ResetWatch. If no `.env` exists yet, copy the supplied `.env.example` and edit the copy:
 
@@ -86,7 +119,7 @@ To check email delivery immediately with a binary on your `PATH`, run `resetwatc
 
 ## Claude (Pro and Max)
 
-Claude Code reports your 5-hour and weekly plan usage to its [status line](https://code.claude.com/docs/en/statusline) command. ResetWatch reads only that documented data; it never reads Claude credentials and makes no requests to Claude. Add this to `~/.claude/settings.json`, using the full path to your built binary:
+Claude Code reports your 5-hour and weekly plan usage to its [status line](https://code.claude.com/docs/en/statusline) command. ResetWatch reads only that documented data; it never reads Claude credentials and makes no requests to Claude. Run `resetwatch setup` or `resetwatch connect claude` for managed installation and safe restoration. For manual integration, add this to `~/.claude/settings.json`, using the full path to your built binary:
 
 ```json
 {
@@ -99,7 +132,7 @@ On Windows, use the `.exe` path with forward slashes, for example `C:/Users/you/
 Limits of this approach:
 
 - Readings arrive only while Claude Code is open and after its first response in a session. ResetWatch schedules a reminder only if a reading shows a window at 100%.
-- This replaces any status line you already use.
+- Managed setup asks before replacing a status line and can restore the prior entry. Manual editing replaces whatever you configure yourself.
 - Repeated callbacks are safe to retry. A reading and its reminders are saved together, so an interrupted update does not permanently suppress that reading.
 - A missing window keeps its last known value until it resets. For the same reset time, saved usage never decreases; older reset times cannot replace newer ones. Values are last known usage, not a live verification of access.
 - Claude reminders always say the limit **should be back**, at the recorded reset time. Status-line callbacks can repeat cached data, so they never trigger early delivery or confirm available allowance.
@@ -110,11 +143,13 @@ Limits of this approach:
 
 | Command | Behavior |
 | --- | --- |
+| `resetwatch setup [--providers codex\|claude\|both] [--email ADDRESS] [--from SENDER]` | Guided setup; add `--non-interactive` for scripts, `--replace-statusline` for an approved replacement, or `--test-email` for an explicit send. |
+| `resetwatch connect claude [--replace-statusline]` | Install the managed Claude status line and enable Claude. |
 | `resetwatch connect codex [--codex-bin PATH]` | Read quota through the local Codex app-server and save the connection. |
 | `resetwatch notify --email ADDRESS --from SENDER` | Save one recipient and sender; send no email. |
 | `resetwatch test-email --email ADDRESS [--from SENDER]` | Send one TEST email immediately; no Codex access, saved state, or automatic retries. |
 | `resetwatch watch [--interval 1m] [--once]` | Refresh quotas and deliver due alerts. Interval must be 15 seconds to 1 hour. |
-| `resetwatch status [--provider codex\|claude] [--refresh] [--json]` | Show the saved observation (Codex if connected, otherwise Claude); `--refresh` requests current Codex data first. |
+| `resetwatch status [--provider codex\|claude] [--refresh] [--json]` | Show selected providers; `--provider` selects one, `--all --json` returns combined data, and default JSON retains one snapshot. `--refresh` requests selected Codex data first. |
 | `resetwatch history [--limit 20] [--json]` | Show alert states and delivery attempts. Limit: 1–1000. |
 | `resetwatch claude-statusline` | Claude Code status line command: record plan usage from stdin and print a short summary. |
 | `resetwatch retry --id FULL_ALERT_ID` | Requeue an eligible failed alert, keeping the same delivery key and frozen message. |

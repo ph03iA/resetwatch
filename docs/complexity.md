@@ -353,3 +353,146 @@ New reset messages reuse the existing frozen `LocalResetAt` field, explicitly fo
 Extracted: none; reused the existing message field, freeze operation and renderer. Only `compose` changed behavior. All production functions in its file were measured; the all-functions complexity ceiling including tests passes.
 
 Behavior verified: the merged-main baseline race suite passed. The new composition regression failed on all three cases before the one-line fix, then passed for Codex, Claude and a year rollover while the host zone was UTC-08:00. Full race tests and vet pass. Tests compare actual Resend request JSON and delivery keys after message serialization and a host-zone change, and verify frozen IST display text survives SQLite reopen without being replaced. Legacy UTC rendering remains covered. The Windows CLI was rebuilt and its version command passed.
+
+
+## Guided setup implementation
+
+Measured every changed/new production function against `7216008` using gocyclo; Go AST function bodies identify touched functions independently of file moves. Ranked descending by the greater before/after score. New functions have no invented baseline. Platform-specific replacement functions are listed separately. All functions, including tests, remain at complexity 10 or below; current maximum is 9.
+
+| Function | Before CC | After CC |
+| --- | ---: | ---: |
+| main.(*application).activateSetup | New | 9 |
+| main.(*application).collectSetupEmail | New | 9 |
+| main.(*application).collectSetupKey | New | 9 |
+| main.(*application).confirmSetupDisabling | New | 9 |
+| main.(*application).statusSnapshot | 9 | 9 |
+| main.(setupPrompter).choose | New | 9 |
+| store.schedule | 8 | 9 |
+| claudeconfig.(Installer).installBackup | New | 8 |
+| claudeconfig.writeDocument | New | 8 |
+| main.(*application).prepareSetupProvider | New | 8 |
+| main.readEnvSnapshot | New | 8 |
+| store.(*DB).ValidateDelivery | New | 8 |
+| store.moveAlert | 5 | 8 |
+| watch.(*Engine).cancelReason | 7 | 8 |
+| claudeconfig.(Installer).Restore | New | 7 |
+| main.(*application).prepareSetupProviders | New | 7 |
+| main.(setupPrompter).confirm | New | 7 |
+| main.updateResendEnv | New | 7 |
+| main.validateResendEnvKey | New | 7 |
+| store.(*DB).ConfigureNotifications | 7 | 1 |
+| store.(*DB).RecordSnapshot | 7 | 7 |
+| store.(*DB).Schedule | 6 | 7 |
+| store.(*DB).configureNotifications | New | 7 |
+| store.(Config).Selected | New | 7 |
+| store.scheduleSaved | 5 | 7 |
+| watch.(*Engine).sendAlert | 6 | 7 |
+| claudeconfig.(Installer).applyInstall | New | 6 |
+| claudeconfig.(Installer).readBackup | New | 6 |
+| claudeconfig.(Installer).validate | New | 6 |
+| claudeconfig.readRegular | New | 6 |
+| main.(*application).connect | 4 | 6 |
+| main.(*application).connectClaude | New | 6 |
+| main.(*application).defaultStatusProvider | New | 6 |
+| main.(*application).selectSetupProviders | New | 6 |
+| main.(*application).sendSetupTest | New | 6 |
+| main.(*application).setup | New | 6 |
+| main.(*application).status | 5 | 6 |
+| main.(*application).watch | 6 | 6 |
+| main.(setupPrompter).password | New | 6 |
+| main.(setupPrompter).read | New | 6 |
+| main.readSetupLine | New | 6 |
+| main.saveResendEnv | New | 6 |
+| quota.npmCodexBinary | New | 6 |
+| store.configureState | New | 6 |
+| claudeconfig.(Installer).Install | New | 5 |
+| claudeconfig.(journal).validEntries | New | 5 |
+| claudeconfig.checkDirectory | New | 5 |
+| claudeconfig.matchesEntry | New | 5 |
+| claudeconfig.readDocument | New | 5 |
+| localfile.Write | New | 5 |
+| main.(*application).checkSetupProvider | New | 5 |
+| main.(*application).claudeInstaller | New | 5 |
+| main.(*application).installSetupClaude | New | 5 |
+| main.(*application).offerSetupTest | New | 5 |
+| main.(*application).promptSetupEmail | New | 5 |
+| main.(*application).setupDefaultProvider | New | 5 |
+| main.(*application).statusAll | New | 5 |
+| main.(*application).statusFlags | New | 5 |
+| main.(setupPrompter).ask | New | 5 |
+| main.envAssignmentComment | New | 5 |
+| main.inspectEnvForWrite | New | 5 |
+| main.sameEnvSnapshot | New | 5 |
+| store.(*DB).Claim | 2 | 5 |
+| store.(*DB).EnableProvider | New | 5 |
+| claudeconfig.statusEntry | New | 4 |
+| localfile.prepare | New | 4 |
+| localfile.regularTarget | New | 4 |
+| main.(*application).codexProvider | 2 | 4 |
+| main.(*application).collectSetup | New | 4 |
+| main.(*application).connectedProviders | New | 4 |
+| main.(*application).printSetupSummary | New | 4 |
+| main.(*application).setupIsTerminal | New | 4 |
+| main.(*application).stateCommand | 4 | 4 |
+| main.(*application).statusProviders | New | 4 |
+| main.(*application).statusReadings | New | 4 |
+| main.(setupPrompter).printChoices | New | 4 |
+| main.(statusOptions).combined | New | 4 |
+| main.validateSetupChoices | New | 4 |
+| quota.codexBinary | 4 | 2 |
+| quota.defaultCodexBinary | New | 4 |
+| store.(*DB).ConfigureSetup | New | 4 |
+| store.(*DB).Retry | 4 | 4 |
+| store.(*DB).SaveCodexBinary | 4 | 4 |
+| store.alertsToMove | 4 | 4 |
+| store.claimSelected | New | 4 |
+| store.reconcileNotifications | 4 | 3 |
+| store.retrySelected | New | 4 |
+| store.scheduleWindow | 4 | 4 |
+| watch.(*Engine).Step | 3 | 4 |
+| claudeconfig.(Installer).newBackup | New | 3 |
+| claudeconfig.(Installer).restoreEntry | New | 3 |
+| claudeconfig.(Installer).saveBackup | New | 3 |
+| claudeconfig.(journal).owns | New | 3 |
+| claudeconfig.validInstalledEntry | New | 3 |
+| localfile.replace [replace_other.go] | New | 3 |
+| localfile.replace [replace_windows.go] | New | 3 |
+| main.(*application).refreshStatusProviders | New | 3 |
+| main.(*application).renderStatusReadings | New | 3 |
+| main.(*application).reportUnfinishedSetup | New | 3 |
+| main.(*application).restoreSetupTerminal | New | 3 |
+| main.(*application).setupPassword | New | 3 |
+| main.encodeEnvKey | New | 3 |
+| main.replaceEnvAssignment | New | 3 |
+| main.requireEnvUnchanged | New | 3 |
+| main.setupReadError | New | 3 |
+| store.(Config).ProvidersList | New | 3 |
+| store.rejectActiveDelivery | 3 | 3 |
+| watch.(*Engine).Observe | 3 | 1 |
+| watch.(*Engine).cycleProvider | New | 3 |
+| watch.(*Engine).observe | New | 3 |
+| claudeconfig.encodePowerShell | New | 2 |
+| claudeconfig.ensureDirectory | New | 2 |
+| claudeconfig.launcherForOS | New | 2 |
+| main.(*application).help | 2 | 2 |
+| main.(*application).readSetupCodex | New | 2 |
+| main.(*application).setupFlags | New | 2 |
+| main.boundedEnvContent | New | 2 |
+| main.completeSetupLine | New | 2 |
+| main.setupCodexBinary | New | 2 |
+| quota.DiscoverBinary | New | 2 |
+| store.(Config).withProvider | New | 2 |
+| claudeconfig.(Installer).backupPath | New | 1 |
+| claudeconfig.(Installer).launcher | New | 1 |
+| claudeconfig.(Installer).settingsPath | New | 1 |
+| claudeconfig.powershellQuote | New | 1 |
+| claudeconfig.shellQuote | New | 1 |
+| store.cancelDisabled | New | 1 |
+| store.cancelMovedAlert | New | 1 |
+| store.failExhausted | New | 1 |
+
+Extracted: status argument parsing, provider resolution, snapshot collection and rendering; shared setup configuration transaction; delivery claiming and final lease validation; per-cycle provider construction; bounded prompts and hidden input; atomic local-file replacement; Claude journal validation, ownership and persistence. No existing exported signature was removed or changed.
+
+During implementation, `status` measured 12 and `statusAll` 13 before extracting their separate jobs; their final scores are listed above. `setupPrompter.choose` measured 11 before extracting choice validation and finishes at 9. The interrupted-launcher recovery fix splits journal validation and ownership without hiding decisions.
+
+Behavior verified: baseline and combined race suites, independent subsystem tests, real Windows CLI and hidden-input/Ctrl-C smoke checks, synthetic installer recovery including locked Windows replacement, provider cancellation/claim races, immutable retry payloads, legacy JSON compatibility and actual browser checks. See validation.md for limits and delivery state.

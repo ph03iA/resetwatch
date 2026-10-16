@@ -18,8 +18,9 @@ type codexAccountResponse struct {
 }
 
 type codexLimitsResponse struct {
-	RateLimits          *codexLimit            `json:"rateLimits"`
-	RateLimitsByLimitID map[string]*codexLimit `json:"rateLimitsByLimitId"`
+	RateLimits           *codexLimit            `json:"rateLimits"`
+	RateLimitsByLimitID  map[string]*codexLimit `json:"rateLimitsByLimitId"`
+	OrdinaryUsageAllowed *bool                  `json:"ordinaryUsageAllowed"`
 }
 
 type codexLimit struct {
@@ -59,7 +60,8 @@ func decodeSnapshot(identity string, observedAt time.Time, response codexLimitsR
 	if err != nil {
 		return Snapshot{}, err
 	}
-	snapshot := Snapshot{Provider: "codex", AccountID: identity, ObservedAt: observedAt, Windows: windows}
+	snapshot := Snapshot{Provider: "codex", AccountID: identity, ObservedAt: observedAt, Windows: windows,
+		OrdinaryUsageAllowed: response.OrdinaryUsageAllowed}
 	if err := ValidateSnapshot(snapshot); err != nil {
 		return Snapshot{}, err
 	}

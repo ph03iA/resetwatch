@@ -2,6 +2,9 @@
 
 ## Unreleased — 2026-10-16
 
+- Name the npm `codex.exe` location in the Windows not-found error and README.
+- Set the version once: release builds stamp `main.version`, which is also reported to Codex.
+- Rebuild platform archives, source archive and checksums so downloads include the early-reset fix.
 - Email immediately when Codex resets an exhausted window early, instead of silently cancelling the alert. Windows that never reach 100% still send nothing.
 - Remove countdown/email previews, mock emails and demo controls from the installation page, retaining the original decorative envelope, real setup instructions and reset-evidence notes.
 - Load the Resend key once from a local `.env` for both watcher and test emails, with process-environment precedence, bounded parsing and redacted errors. Include a blank `.env.example` and exclude real environment files from Git and release archives.

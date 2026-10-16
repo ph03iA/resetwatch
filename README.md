@@ -56,7 +56,7 @@ Replace `you@example.com` with your Resend account email for this no-domain test
 resetwatch connect codex --codex-bin /absolute/path/to/codex
 ```
 
-On Windows, use the native `codex.exe` path. `.cmd`, `.bat`, and `.ps1` shims are intentionally unsupported. ResetWatch never runs a shell to interpret a configured executable path.
+On Windows, use the native `codex.exe` path. If you installed Codex with npm, only a `codex.cmd` shim is on `PATH`; the native executable is at `%APPDATA%\npm\node_modules\@openai\codex\node_modules\@openai\codex-win32-x64\vendor\x86_64-pc-windows-msvc\bin\codex.exe`. `.cmd`, `.bat`, and `.ps1` shims are intentionally unsupported. ResetWatch never runs a shell to interpret a configured executable path.
 
 An explicit `--codex-bin` value is resolved and saved as an absolute path during connection, including relative paths and names found on `PATH`. Later directory or PATH changes do not change that saved executable. Without this flag, ResetWatch continues to look up Codex on `PATH` at runtime. If you previously saved a relative path, reconnect once with `--codex-bin` to normalize it.
 

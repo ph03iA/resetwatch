@@ -22,7 +22,7 @@ def build(target):
     folder.mkdir(parents=True, exist_ok=True)
     binary = folder / ("resetwatch.exe" if system == "windows" else "resetwatch")
     environment = dict(os.environ, GOOS=system, GOARCH=arch, CGO_ENABLED="0")
-    subprocess.run(["go", "build", "-buildvcs=false", "-trimpath", "-ldflags=-s -w", "-o", str(binary), "./cmd/resetwatch"], cwd=ROOT, env=environment, check=True)
+    subprocess.run(["go", "build", "-buildvcs=false", "-trimpath", f"-ldflags=-s -w -X main.version={VERSION}", "-o", str(binary), "./cmd/resetwatch"], cwd=ROOT, env=environment, check=True)
     for name in DOCUMENTS:
         shutil.copyfile(ROOT / name, folder / name)
     return archive_target(system, arch, folder)

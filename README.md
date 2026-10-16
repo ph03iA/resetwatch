@@ -8,7 +8,9 @@ A local CLI that emails you when an exhausted Codex usage window reaches its res
 
 The installation page is local in `site/dist/`. From the project root, run `node tools/serve.mjs` and open [the local page](http://127.0.0.1:4173). This project has not been published.
 
-There are no prebuilt downloads. Install Git and Go 1.27.2 or newer, then clone and build. The same commands work in PowerShell, macOS Terminal and Linux shells; on Windows, Go names the file `resetwatch.exe` and PowerShell runs it as `./resetwatch`:
+There are no prebuilt downloads. Install Git and Go 1.27.2 or newer, then clone and build.
+
+macOS and Linux:
 
 ```sh
 git clone https://github.com/ph03iA/resetwatch.git
@@ -16,6 +18,17 @@ cd resetwatch
 go build ./cmd/resetwatch
 ./resetwatch version
 ```
+
+Windows (PowerShell or Command Prompt). Go names the file `resetwatch.exe`:
+
+```bat
+git clone https://github.com/ph03iA/resetwatch.git
+cd resetwatch
+go build ./cmd/resetwatch
+.\resetwatch.exe version
+```
+
+The examples below use `./resetwatch`; on Windows, write `.\resetwatch.exe` instead and use double quotes around values that contain `<` or spaces.
 
 To use `resetwatch` from any directory, run `go install ./cmd/resetwatch` instead. Go installs to `GOBIN`, or to `GOPATH/bin` when `GOBIN` is unset; add that directory to your `PATH` if needed. The module path is local (`resetwatch`), so `go install github.com/...@latest` does not work.
 

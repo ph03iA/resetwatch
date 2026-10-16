@@ -1,6 +1,50 @@
 "use strict";
 
+const clone = "git clone https://github.com/ph03iA/resetwatch.git\ncd resetwatch\ngo build ./cmd/resetwatch\n";
+
+// Windows commands also work in Command Prompt: .\ paths and double quotes only.
+const platforms = {
+  windows: {
+    shell: "PowerShell / CMD",
+    help: "In PowerShell or Command Prompt, open the folder that should hold ResetWatch. Requires Git and Go 1.27.2 or newer.",
+    executable: ".\\resetwatch.exe",
+  },
+  unix: {
+    shell: "Terminal",
+    help: "In Terminal, open the folder that should hold ResetWatch. Requires Git and Go 1.27.2 or newer.",
+    executable: "./resetwatch",
+  },
+};
+
+const tabs = [...document.querySelectorAll("[data-os]")];
 const status = document.getElementById("copy-status");
+
+function selectPlatform(tab) {
+  const platform = platforms[tab.dataset.os];
+  const run = platform.executable;
+  tabs.forEach((item) => {
+    const selected = item === tab;
+    item.setAttribute("aria-selected", String(selected));
+    item.tabIndex = selected ? 0 : -1;
+  });
+  document.getElementById("installation-panel").setAttribute("aria-labelledby", tab.id);
+  document.getElementById("shell-label").textContent = platform.shell;
+  document.getElementById("unpack-help").textContent = platform.help;
+  document.getElementById("install-command").textContent = `${clone}${run} version`;
+  document.getElementById("connect-command").textContent = `${run} connect codex`;
+  document.getElementById("watch-command").textContent = `${run} notify --email you@example.com --from "ResetWatch <onboarding@resend.dev>"\n${run} watch`;
+}
+
+function handleTabKey(event) {
+  const index = tabs.indexOf(event.currentTarget);
+  const offsets = { ArrowRight: 1, ArrowLeft: -1, Home: -index, End: tabs.length - 1 - index };
+  const offset = offsets[event.key];
+  if (offset === undefined) return;
+  event.preventDefault();
+  const next = tabs[(index + offset + tabs.length) % tabs.length];
+  selectPlatform(next);
+  next.focus();
+}
 
 function selectCommandText(target) {
   const selection = window.getSelection();
@@ -37,6 +81,10 @@ async function copyCommand(event) {
   }
 }
 
+tabs.forEach((tab) => {
+  tab.addEventListener("click", () => selectPlatform(tab));
+  tab.addEventListener("keydown", handleTabKey);
+});
 document.querySelectorAll("[data-copy]").forEach((button) => button.addEventListener("click", copyCommand));
 
 // Content stays visible without JavaScript; sections only fade in when the observer exists.

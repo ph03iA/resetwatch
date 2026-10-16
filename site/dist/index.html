@@ -83,26 +83,26 @@
       <div class="wrap install-layout">
         <div class="section-heading"><div><p class="section-label"><span>02</span> Installation</p><h2 id="install-title">Set it up.<br><em>Then step away.</em></h2></div><p class="section-deck">Build from source, connect Codex,<br>and choose where the reminder goes.</p></div>
         <div class="install-workbook">
-          <div class="install-toolbar"><p class="install-platforms">Same commands on Windows, macOS and Linux.</p><a class="download-link" href="https://github.com/ph03iA/resetwatch" target="_blank" rel="noopener noreferrer">Source on GitHub ↗</a></div>
-          <div>
+          <div class="install-toolbar"><div class="os-tabs" role="tablist" aria-label="Installation operating system"><button id="tab-windows" type="button" role="tab" aria-selected="true" aria-controls="installation-panel" tabindex="0" data-os="windows">Windows</button><button id="tab-unix" type="button" role="tab" aria-selected="false" aria-controls="installation-panel" tabindex="-1" data-os="unix">macOS &amp; Linux</button></div><a class="download-link" href="https://github.com/ph03iA/resetwatch" target="_blank" rel="noopener noreferrer">Source on GitHub ↗</a></div>
+          <div id="installation-panel" role="tabpanel" aria-labelledby="tab-windows" tabindex="0">
             <div class="install-step">
               <span class="step-index" aria-hidden="true">01</span>
-              <div class="step-copy"><h3>Clone &amp; build.</h3><p class="step-help">In a terminal (PowerShell on Windows), open the folder that should hold ResetWatch. Requires Git and Go 1.27.2 or newer.</p><p class="step-aside">Keep this folder, or move the binary to a directory on your PATH.</p></div>
-              <div class="code-block"><div class="code-header"><span>Terminal</span><button type="button" class="copy-button" data-copy="install-command" aria-label="Copy clone and build commands">Copy <svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M6 3H3v10h8v-3M6 1h7v8H6z" stroke="currentColor" stroke-width="1.5"/></svg></button></div><pre><code id="install-command">git clone https://github.com/ph03iA/resetwatch.git
+              <div class="step-copy"><h3>Clone &amp; build.</h3><p class="step-help" id="unpack-help">In PowerShell or Command Prompt, open the folder that should hold ResetWatch. Requires Git and Go 1.27.2 or newer.</p><p class="step-aside">Keep this folder, or move the binary to a directory on your PATH.</p></div>
+              <div class="code-block"><div class="code-header"><span id="shell-label">PowerShell / CMD</span><button type="button" class="copy-button" data-copy="install-command" aria-label="Copy clone and build commands">Copy <svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M6 3H3v10h8v-3M6 1h7v8H6z" stroke="currentColor" stroke-width="1.5"/></svg></button></div><pre><code id="install-command">git clone https://github.com/ph03iA/resetwatch.git
 cd resetwatch
 go build ./cmd/resetwatch
-./resetwatch version</code></pre></div>
+.\resetwatch.exe version</code></pre></div>
             </div>
             <div class="install-step">
               <span class="step-index" aria-hidden="true">02</span>
               <div class="step-copy"><h3>Connect Codex.</h3><p class="step-help">Install Codex and run <code>codex login</code> first. Your sign-in stays with Codex.</p><p class="step-aside">Using a Windows shell shim? Set <code>--codex-bin</code> to the native <code>codex.exe</code> path.</p></div>
-              <div class="code-block"><div class="code-header"><span>Connect account</span><button type="button" class="copy-button" data-copy="connect-command" aria-label="Copy Codex connection command">Copy <svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M6 3H3v10h8v-3M6 1h7v8H6z" stroke="currentColor" stroke-width="1.5"/></svg></button></div><pre><code id="connect-command">./resetwatch connect codex</code></pre></div>
+              <div class="code-block"><div class="code-header"><span>Connect account</span><button type="button" class="copy-button" data-copy="connect-command" aria-label="Copy Codex connection command">Copy <svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M6 3H3v10h8v-3M6 1h7v8H6z" stroke="currentColor" stroke-width="1.5"/></svg></button></div><pre><code id="connect-command">.\resetwatch.exe connect codex</code></pre></div>
             </div>
             <div class="install-step">
               <span class="step-index" aria-hidden="true">03</span>
               <div class="step-copy"><h3>Choose your inbox.</h3><p class="step-help">Create a <a href="https://resend.com/api-keys" target="_blank" rel="noopener noreferrer">Resend API key ↗</a>. If needed, copy <code>.env.example</code> to <code>.env</code> in this folder. Paste your key and save once. Replace the recipient below, then start the watcher.</p><p class="step-aside">Run from this folder so <code>.env</code> loads. No domain? Use your Resend account email.</p></div>
-              <div class="code-block"><div class="code-header"><span>Email & watcher</span><button type="button" class="copy-button" data-copy="watch-command" aria-label="Copy email setup and watcher commands">Copy <svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M6 3H3v10h8v-3M6 1h7v8H6z" stroke="currentColor" stroke-width="1.5"/></svg></button></div><pre><code id="watch-command">./resetwatch notify --email you@example.com --from 'ResetWatch &lt;onboarding@resend.dev&gt;'
-./resetwatch watch</code></pre></div>
+              <div class="code-block"><div class="code-header"><span>Email & watcher</span><button type="button" class="copy-button" data-copy="watch-command" aria-label="Copy email setup and watcher commands">Copy <svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M6 3H3v10h8v-3M6 1h7v8H6z" stroke="currentColor" stroke-width="1.5"/></svg></button></div><pre><code id="watch-command">.\resetwatch.exe notify --email you@example.com --from "ResetWatch &lt;onboarding@resend.dev&gt;"
+.\resetwatch.exe watch</code></pre></div>
               <p class="watch-note"><span class="status-dot" aria-hidden="true"></span>Keep the watcher running on an awake, online machine. <kbd>Ctrl</kbd> + <kbd>C</kbd> stops it safely.</p>
             </div>
           </div>

@@ -129,7 +129,7 @@ func (e *Engine) cancelReason(ctx context.Context, alert store.Alert, config sto
 
 func compose(alert store.Alert, snapshot *quota.Snapshot, now time.Time) notify.Message {
 	message := notify.Message{Key: alert.ID, To: alert.To, From: alert.From,
-		Provider: alert.Provider, Window: alert.Window, ResetAt: alert.ResetAt}
+		Provider: alert.Provider, Window: alert.Window, ResetAt: alert.ResetAt, Duration: windowDuration(snapshot, alert)}
 	if !freshForAlert(snapshot, alert, now) {
 		return message
 	}
@@ -145,6 +145,19 @@ func compose(alert store.Alert, snapshot *quota.Snapshot, now time.Time) notify.
 		message.Confirmed = false
 	}
 	return message
+}
+
+// windowDuration finds the alert window's length in a snapshot of the same account; zero when unknown.
+func windowDuration(snapshot *quota.Snapshot, alert store.Alert) time.Duration {
+	if snapshot == nil || snapshot.AccountID != alert.AccountID || snapshot.Provider != alert.Provider {
+		return 0
+	}
+	for _, window := range snapshot.Windows {
+		if window.ID == alert.Window {
+			return window.Duration
+		}
+	}
+	return 0
 }
 
 func freshForAlert(snapshot *quota.Snapshot, alert store.Alert, now time.Time) bool {

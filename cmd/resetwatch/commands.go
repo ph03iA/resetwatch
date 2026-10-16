@@ -16,6 +16,9 @@ import (
 )
 
 func (a *application) connect(ctx context.Context, args []string) error {
+	if len(args) > 0 && args[0] == "claude" {
+		return a.connectClaude(ctx, args[1:])
+	}
 	binary, err := a.connectFlags(args)
 	if err != nil {
 		return err
@@ -28,7 +31,7 @@ func (a *application) connect(ctx context.Context, args []string) error {
 		return err
 	}
 	fmt.Fprintln(a.out, "Connected to Codex. Account credentials remain with Codex.")
-	fmt.Fprintln(a.out, "Restart any running ResetWatch watcher to use this connection and executable path.")
+	fmt.Fprintln(a.out, "A running ResetWatch watcher adopts this connection on its next cycle.")
 	return nil
 }
 
@@ -76,28 +79,6 @@ func (a *application) configure(ctx context.Context, args []string) error {
 	return nil
 }
 
-func (a *application) status(ctx context.Context, args []string) error {
-	flags := a.flags("status")
-	refresh := flags.Bool("refresh", false, "read current account limits before displaying")
-	asJSON := flags.Bool("json", false, "machine-readable output")
-	provider := flags.String("provider", "", "codex or claude (default: codex if connected, else claude)")
-	if err := flags.Parse(args); err != nil {
-		return err
-	}
-	if err := noArguments(flags.Args()); err != nil {
-		return err
-	}
-	snapshot, err := a.statusSnapshot(ctx, *provider, *refresh)
-	if err != nil {
-		return err
-	}
-	if *asJSON {
-		return writeJSON(a.out, snapshot)
-	}
-	a.render(snapshot, false)
-	return nil
-}
-
 var noReadings = map[string]string{
 	"codex":  "no connected account; run resetwatch connect codex",
 	"claude": "no Claude readings yet; set resetwatch claude-statusline as your Claude Code status line and use Claude Code",
@@ -106,9 +87,10 @@ var noReadings = map[string]string{
 // statusSnapshot picks the provider to show and returns its saved reading, refreshing Codex on request.
 func (a *application) statusSnapshot(ctx context.Context, provider string, refresh bool) (quota.Snapshot, error) {
 	if provider == "" {
-		provider = "claude"
-		if _, err := a.db.Snapshot(ctx, "codex"); err == nil {
-			provider = "codex"
+		var err error
+		provider, err = a.defaultStatusProvider(ctx)
+		if err != nil {
+			return quota.Snapshot{}, err
 		}
 	}
 	if noReadings[provider] == "" {
@@ -184,7 +166,7 @@ func (a *application) watch(ctx context.Context, args []string) error {
 	if err != nil {
 		return err
 	}
-	engine := watch.Engine{DB: a.db, Provider: a.codexProvider(ctx, config),
+	engine := watch.Engine{DB: a.db, ProviderFactory: func(current store.Config) quota.Provider { return a.codexProvider(ctx, current) },
 		Sender: notify.Resend{APIKey: key}, Log: func(message string) { fmt.Fprintln(a.errOut, time.Now().Format(time.RFC3339), message) }}
 	fmt.Fprintln(a.errOut, "Watching reset windows. Ctrl+C stops safely.")
 	return engine.Run(ctx, *interval, *once)
@@ -192,8 +174,13 @@ func (a *application) watch(ctx context.Context, args []string) error {
 
 // codexProvider polls Codex only once it has been connected, so a Claude-only setup does not log a failure every cycle.
 func (a *application) codexProvider(ctx context.Context, config store.Config) quota.Provider {
-	if _, err := a.db.Snapshot(ctx, "codex"); err != nil {
+	if !config.Selected("codex") {
 		return nil
+	}
+	if config.Providers == "" {
+		if _, err := a.db.Snapshot(ctx, "codex"); err != nil {
+			return nil
+		}
 	}
 	return quota.Codex{Binary: config.CodexBin, Timeout: 15 * time.Second, Version: version}
 }

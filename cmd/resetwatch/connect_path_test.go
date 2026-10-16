@@ -58,8 +58,8 @@ func TestConnectPersistsAbsoluteBinary(t *testing.T) {
 	if err := app.run(context.Background(), []string{"connect", "codex", "--codex-bin", relative}); err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(output.String(), "Restart any running ResetWatch watcher") {
-		t.Fatal("connect must explain when the running watcher adopts connection changes")
+	if !strings.Contains(output.String(), "next cycle") {
+		t.Fatal("connect must explain live connection changes")
 	}
 	if got := connectSavedConfig(t, app).CodexBin; got != binary {
 		t.Fatalf("saved executable = %q, want absolute path %q", got, binary)

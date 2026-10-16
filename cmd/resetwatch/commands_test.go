@@ -45,7 +45,7 @@ func TestOfflineCommands(t *testing.T) {
 func TestCLIRejectsInvalidInput(t *testing.T) {
 	cases := [][]string{
 		{"missing"}, {"version", "extra"}, {"demo", "extra"},
-		{"connect", "claude"}, {"status"}, {"status", "extra"},
+		{"connect", "unsupported"}, {"status"}, {"status", "extra"},
 		{"notify", "--email", "bad", "--from", "bad"},
 		{"notify", "--email", "a@example.com\r\nBcc: victim@example.com", "--from", "b@example.com"},
 		{"history", "--limit", "0"}, {"history", "--limit", "1001"},

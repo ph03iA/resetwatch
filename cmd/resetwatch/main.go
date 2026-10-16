@@ -12,6 +12,7 @@ import (
 	"syscall"
 
 	"resetwatch/internal/notify"
+	"resetwatch/internal/quota"
 	"resetwatch/internal/store"
 )
 
@@ -32,12 +33,15 @@ func execute() int {
 }
 
 type application struct {
-	in         io.Reader
-	out        io.Writer
-	errOut     io.Writer
-	getenv     func(string) string
-	db         *store.DB
-	testSender notify.Sender
+	in             io.Reader
+	out            io.Writer
+	errOut         io.Writer
+	getenv         func(string) string
+	db             *store.DB
+	testSender     notify.Sender
+	setupTerminal  func() bool
+	setupSecret    func() (string, error)
+	setupReadCodex func(context.Context, string) (quota.Snapshot, error)
 }
 
 func (a *application) run(ctx context.Context, args []string) error {
@@ -59,7 +63,7 @@ func (a *application) run(ctx context.Context, args []string) error {
 
 func (a *application) stateCommand(ctx context.Context, args []string) error {
 	commands := map[string]func(context.Context, []string) error{
-		"connect": a.connect, "notify": a.configure, "status": a.status,
+		"connect": a.connect, "notify": a.configure, "status": a.status, "setup": a.setup,
 		"history": a.history, "watch": a.watch, "retry": a.retry,
 		"claude-statusline": a.claudeStatusLine,
 	}
@@ -118,24 +122,30 @@ func (a *application) help(args []string) error {
 	fmt.Fprintln(a.out, `ResetWatch — leave the clock to us.
 
 Usage:
+  resetwatch setup [--providers codex|claude|both] [--email ADDRESS] [--from SENDER]
+                   [--codex-bin PATH] [--replace-statusline] [--test-email] [--non-interactive]
+  resetwatch connect claude [--replace-statusline]
   resetwatch connect codex [--codex-bin /path/to/codex]
   resetwatch claude-statusline   (set as your Claude Code status line command)
   resetwatch notify --email you@example.com --from "ResetWatch <alerts@yourdomain.com>"
   resetwatch test-email --email your-resend-account-email [--from SENDER]
   resetwatch watch [--interval 1m] [--once]
-  resetwatch status [--provider codex|claude] [--refresh] [--json]
+  resetwatch status [--provider codex|claude | --all] [--refresh] [--json]
   resetwatch history [--limit 20] [--json]
   resetwatch retry --id <full-alert-id>
   resetwatch demo
   resetwatch version
 
-Quota commands require Codex signed in with ChatGPT. No inference requests are made.
+Run setup for guided provider and email configuration; the watcher remains a separate command.
+Codex quota commands require Codex signed in with ChatGPT. No inference requests are made.
 Claude Pro/Max limits are read from Claude Code's status line data while Claude Code is open.
-Save RESEND_API_KEY in .env in your current folder, or set it in the environment.
+Setup asks for a missing Resend key without echo and saves it in .env in your current folder.
+Keep running watch from that folder, or set RESEND_API_KEY in the environment.
 An existing environment key takes priority. The sender must be verified in Resend.
 test-email sends one labeled test immediately without a Codex connection.
 Its default resend.dev sender can send only to your Resend account email.
 Set RESETWATCH_HOME to override the private local state directory.
+Provider changes apply on the next watcher cycle; key changes require a watcher restart.
 The watcher must remain running on an awake, connected computer.
 Emails distinguish scheduled resets from freshly confirmed allowance.`)
 	return nil

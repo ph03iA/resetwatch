@@ -29,19 +29,28 @@ resetwatch version
 
 Go installs to `GOBIN`, or to `GOPATH/bin` when `GOBIN` is unset. Add that directory to your `PATH` if needed. The module path is local (`resetwatch`); there is no published GitHub installation URL.
 
+For a local Windows source build, run this from the project root:
+
+```powershell
+go build -o .\bin\resetwatch.exe ./cmd/resetwatch
+.\bin\resetwatch.exe test-email --email 'YOUR_RESEND_ACCOUNT_EMAIL'
+```
+
+Before testing, create `.env` from `.env.example` in the project folder if it does not already exist, and paste your Resend key after `RESEND_API_KEY=`. Keep the command's working directory in that folder. Replace the recipient with your own value. This sends one email labeled **TEST**, without connecting to Codex or opening the state database. The default sender is `ResetWatch <onboarding@resend.dev>`, which can only send to your own Resend account email unless you use a verified sender domain. Provider acceptance does not guarantee inbox receipt. There are no automatic retries; rerunning the command sends another test.
+
 ## Connect and watch
 
-Requirements: a native Codex executable, a ChatGPT subscription sign-in exposing quota data, a Resend API key, and a sender domain verified in Resend. API-key-only Codex accounts do not provide the supported account quota interface.
+Requirements: a native Codex executable, a ChatGPT subscription sign-in exposing quota data, and a Resend API key. You can test without a domain by sending from `onboarding@resend.dev` to the email address associated with your Resend account. Sending to other recipients requires a domain verified in Resend. API-key-only Codex accounts do not provide the supported account quota interface.
 
 First, sign in through Codex itself:
 
 ```sh
 codex login
 resetwatch connect codex
-resetwatch notify --email you@example.com --from 'ResetWatch <alerts@yourdomain.com>'
+resetwatch notify --email you@example.com --from 'ResetWatch <onboarding@resend.dev>'
 ```
 
-Replace the example recipient and sender with your own addresses. If Codex is not on `PATH`, or your installation exposes a shell shim, pass the actual native executable:
+Replace `you@example.com` with your Resend account email for this no-domain test. For other recipients, replace the sender with an address on your verified domain. See [Resend's test-sender restrictions](https://resend.com/docs/knowledge-base/403-error-resend-dev-domain). If Codex is not on `PATH`, or your installation exposes a shell shim, pass the actual native executable:
 
 ```sh
 resetwatch connect codex --codex-bin /absolute/path/to/codex
@@ -49,28 +58,35 @@ resetwatch connect codex --codex-bin /absolute/path/to/codex
 
 On Windows, use the native `codex.exe` path. `.cmd`, `.bat`, and `.ps1` shims are intentionally unsupported. ResetWatch never runs a shell to interpret a configured executable path.
 
-Supply your Resend key to the watcher process. In PowerShell:
+An explicit `--codex-bin` value is resolved and saved as an absolute path during connection, including relative paths and names found on `PATH`. Later directory or PATH changes do not change that saved executable. Without this flag, ResetWatch continues to look up Codex on `PATH` at runtime. If you previously saved a relative path, reconnect once with `--codex-bin` to normalize it.
 
-```powershell
-$env:RESEND_API_KEY = 'your_resend_api_key'
-resetwatch watch
+Save your Resend key once in a file named `.env` in the folder where you run ResetWatch. If no `.env` exists yet, copy the supplied `.env.example` and edit the copy:
+
+```dotenv
+RESEND_API_KEY=re_your_actual_resend_key
 ```
 
-In Bash or Zsh:
+Then run the watcher from that folder, including in a new terminal session:
 
 ```sh
-export RESEND_API_KEY='your_resend_api_key'
 resetwatch watch
 ```
 
-Use a secret manager or your shell's secure input mechanism for real keys; the strings above show the required variable name. The key is not stored in the SQLite database. Keep the watcher running on an awake, online computer. `Ctrl+C` stops it safely; saved alerts resume on the next run.
+Both `watch` and `test-email` load this key automatically. A nonempty `RESEND_API_KEY` already set in the process environment takes priority, and the file is not read in that case. Only `.env` in the current working directory is searched; the binary's folder, parent directories and state directory are not searched. Only `RESEND_API_KEY` is read. Plain values and matching single/double quotes are supported, along with blank lines, UTF-8 BOM, CRLF and comments. An unquoted `#` starts a comment; a quoted `#` remains literal. This is a key file rather than a shell script: use `RESEND_API_KEY=...` without `export`. Escape sequences, variable expansion and multiline values are not supported, and no shell commands run. Duplicate key assignments, malformed values, non-regular files and files over 64 KiB are rejected without exposing their contents.
+
+The `.env` file contains a plaintext secret. Keep it private, restrict it to your user (`chmod 600 .env` on Unix), and do not commit or share it. Git and release packaging exclude real environment files; `.env.example` contains no key. File-loaded values are not exported to the process environment or the Codex subprocess. The key is not stored in SQLite. Process environment variables remain supported for services and secret managers. Keep the watcher running on an awake, online computer. `Ctrl+C` stops it safely; saved alerts resume on the next run.
+
+The file is loaded when a command starts. Restart a running watcher after changing its key.
+
+To check email delivery immediately with a binary on your `PATH`, run `resetwatch test-email --email 'YOUR_RESEND_ACCOUNT_EMAIL'` from the folder containing `.env`. No quota exhaustion is needed. To use your own verified domain, add `--from 'ResetWatch <alerts@yourdomain.com>'`.
 
 ## Commands
 
 | Command | Behavior |
 | --- | --- |
 | `resetwatch connect codex [--codex-bin PATH]` | Read quota through the local Codex app-server and save the connection. |
-| `resetwatch notify --email ADDRESS --from SENDER` | Save one recipient and verified sender; send no email. |
+| `resetwatch notify --email ADDRESS --from SENDER` | Save one recipient and sender; send no email. |
+| `resetwatch test-email --email ADDRESS [--from SENDER]` | Send one TEST email immediately; no Codex access, saved state, or automatic retries. |
 | `resetwatch watch [--interval 1m] [--once]` | Refresh quotas and deliver due alerts. Interval must be 15 seconds to 1 hour. |
 | `resetwatch status [--refresh] [--json]` | Show the saved observation; `--refresh` requests current data first. |
 | `resetwatch history [--limit 20] [--json]` | Show alert states and delivery attempts. Limit: 1–1000. |
@@ -83,11 +99,13 @@ Use `resetwatch history --json` to obtain the full alert ID for a retry. A manua
 ## How alerts work
 
 - An alert is armed when a reported window is exhausted (`used_percent >= 100`) and notification settings exist. The tool does not email for every routine quota check.
+- If Codex restores an exhausted window before its recorded reset time, the watcher emails at once instead of waiting. Windows that were never exhausted never send email.
 - At the recorded reset time, the watcher checks fresh quota data. A **confirmed** email requires fresh data showing the relevant window and every other reported window below exhaustion. A remaining exhausted window prevents that claim.
 - If fresh quota data is unavailable, the alert says **expected reset**. A reset timestamp alone does not prove access is available.
 - Pending alerts and delivery leases survive process restarts. A changed account, recipient, sender, or future reset cancels obsolete pending alerts.
-- Network failures, HTTP 408/429, and server errors are retried with exponential backoff and bounded `Retry-After` handling. Other delivery failures stop automatic retries.
+- Network failures, HTTP 408/429, server errors, and Resend's temporary `409 concurrent_idempotent_requests` response are retried with exponential backoff and bounded `Retry-After` handling. Other conflicts and delivery failures stop automatic retries.
 - Delivery uses one stable idempotency key and an immutable message payload per alert. Resend's deduplication window is 24 hours; ResetWatch stops retrying before 23 hours from the first attempt, with at most eight attempts. Manual retries keep those limits.
+- Recovering an expired delivery lease also respects the eight-attempt limit. An interrupted final attempt becomes failed when its lease expires; it is not sent a ninth time.
 - Alerts older than 24 hours past their reset are cancelled. A computer waking after a week does not send a week of stale reminders.
 - `sent` means Resend returned an accepted receipt. It does not guarantee inbox delivery or that a provider will accept your next AI request.
 
@@ -149,9 +167,10 @@ The Codex protocol and account eligibility can change. Missing or malformed quot
 go test ./...
 go vet ./...
 go run github.com/fzipp/gocyclo/cmd/gocyclo@v0.6.0 -over 10 -ignore '_test.go' cmd internal
+python tools/test_release.py
 node --check site/dist/app.js
 ```
 
 CI also checks formatting and runs `go test -race ./...` on Linux. The SQLite driver is pure Go, so regular builds do not require a C compiler. Race instrumentation requires a supported Go platform and C toolchain. On Windows, use a 64-bit Go installation; the supplied Windows binary targets `amd64`.
 
-Serve `site/dist/` with a static server to preview the website. Its reset readout and envelope illustration are explicitly illustrative; the preview button shows a sample expected-reset email without sending anything. The website does not connect to accounts or collect API keys. Manrope and Instrument Serif are self-hosted with their SIL Open Font License notices in `site/dist/fonts/`. See [AGENTS.md](AGENTS.md) for the complexity and implementation rules, [SECURITY.md](SECURITY.md) for handling sensitive data, and [CHANGELOG.md](CHANGELOG.md) for release scope.
+Serve `site/dist/` with a static server to preview the website. The page provides platform-specific installation commands, downloads, product behavior and operating notes. The website does not connect to accounts or collect API keys. Manrope and Instrument Serif are self-hosted with their SIL Open Font License notices in `site/dist/fonts/`. See [AGENTS.md](AGENTS.md) for the complexity and implementation rules, [SECURITY.md](SECURITY.md) for handling sensitive data, and [CHANGELOG.md](CHANGELOG.md) for release scope.

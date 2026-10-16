@@ -37,6 +37,27 @@ func (provider Codex) Read(ctx context.Context) (Snapshot, error) {
 	return client.snapshot()
 }
 
+// ResolveBinary fixes explicit executable configuration to an absolute native path.
+// An empty value preserves the default PATH lookup at read time.
+func ResolveBinary(configured string) (string, error) {
+	if configured == "" {
+		return "", nil
+	}
+	path, err := codexBinary(configured)
+	if err != nil {
+		return "", err
+	}
+	path, err = exec.LookPath(path)
+	if err != nil {
+		return "", errors.New("Codex native executable not found; check --codex-bin")
+	}
+	path, err = nativeBinary(path)
+	if err != nil {
+		return "", err
+	}
+	return filepath.Abs(path)
+}
+
 func codexBinary(configured string) (string, error) {
 	if configured != "" {
 		return nativeBinary(configured)

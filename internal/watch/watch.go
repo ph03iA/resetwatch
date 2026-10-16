@@ -42,7 +42,7 @@ func (e *Engine) Step(ctx context.Context) error {
 	if observationErr != nil {
 		e.log("Quota refresh unavailable; due emails will describe expected resets only.")
 	}
-	deliveryErr := e.deliverDue(ctx, config, snapshot)
+	deliveryErr := e.deliverDue(ctx, snapshot)
 	return errors.Join(observationErr, deliveryErr)
 }
 
@@ -54,13 +54,17 @@ func (e *Engine) Observe(ctx context.Context, config store.Config) (*quota.Snaps
 	if err := e.DB.SaveSnapshot(ctx, snapshot); err != nil {
 		return nil, err
 	}
+	config, err = e.DB.Config(ctx)
+	if err != nil {
+		return nil, err
+	}
 	if err := e.DB.Schedule(ctx, snapshot, config, e.clock()); err != nil {
 		return nil, err
 	}
 	return &snapshot, nil
 }
 
-func (e *Engine) deliverDue(ctx context.Context, config store.Config, snapshot *quota.Snapshot) error {
+func (e *Engine) deliverDue(ctx context.Context, snapshot *quota.Snapshot) error {
 	for range 50 {
 		alert, err := e.DB.Claim(ctx, e.clock())
 		if errors.Is(err, sql.ErrNoRows) {
@@ -69,17 +73,25 @@ func (e *Engine) deliverDue(ctx context.Context, config store.Config, snapshot *
 		if err != nil {
 			return err
 		}
-		if err := e.deliver(ctx, alert, config, snapshot); err != nil {
+		if err := e.deliver(ctx, alert, snapshot); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-func (e *Engine) deliver(ctx context.Context, alert store.Alert, config store.Config, snapshot *quota.Snapshot) error {
+func (e *Engine) deliver(ctx context.Context, alert store.Alert, snapshot *quota.Snapshot) error {
+	config, err := e.DB.Config(ctx)
+	if err != nil {
+		return err
+	}
 	if reason := e.cancelReason(ctx, alert, config); reason != "" {
 		return e.DB.Finish(ctx, alert, "cancelled", reason, e.clock(), e.clock())
 	}
+	return e.sendAlert(ctx, alert, snapshot)
+}
+
+func (e *Engine) sendAlert(ctx context.Context, alert store.Alert, snapshot *quota.Snapshot) error {
 	message, err := e.DB.FreezeMessage(ctx, alert, compose(alert, snapshot, e.clock()))
 	if err != nil {
 		return err

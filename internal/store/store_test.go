@@ -59,7 +59,7 @@ func TestScheduleDeduplicatesAndDoesNotResendFinishedAlerts(t *testing.T) {
 	assertStates(t, db, map[string]int{"sent": 1})
 }
 
-func TestScheduleCancelsReplacedFutureReset(t *testing.T) {
+func TestScheduleMovedResetOrEarlyRelease(t *testing.T) {
 	cases := []struct {
 		name string
 		used float64
@@ -73,9 +73,9 @@ func TestScheduleCancelsReplacedFutureReset(t *testing.T) {
 			must(t, db.Schedule(ctx, initial, testConfig(), now))
 			updated := testSnapshot(now.Add(time.Minute), now.Add(2*time.Hour), test.used)
 			must(t, db.Schedule(ctx, updated, testConfig(), now.Add(time.Minute)))
-			want := map[string]int{"cancelled": 1}
+			want := map[string]int{"pending": 1}
 			if test.used == 100 {
-				want["pending"] = 1
+				want["cancelled"] = 1
 			}
 			assertStates(t, db, want)
 		})
@@ -88,10 +88,10 @@ func TestCancelledFutureResetCanBeRearmedWithoutDuplicates(t *testing.T) {
 	now := storeTime()
 	snapshot := testSnapshot(now, now.Add(time.Hour), 100)
 	must(t, db.Schedule(ctx, snapshot, testConfig(), now))
-	snapshot.Windows[0].UsedPercent = 50
-	must(t, db.Schedule(ctx, snapshot, testConfig(), now.Add(time.Minute)))
+	withoutPrimary := snapshot
+	withoutPrimary.Windows = []quota.Window{{ID: "codex:secondary", UsedPercent: 50, Duration: 7 * 24 * time.Hour, ResetsAt: now.Add(7 * 24 * time.Hour)}}
+	must(t, db.Schedule(ctx, withoutPrimary, testConfig(), now.Add(time.Minute)))
 	assertStates(t, db, map[string]int{"cancelled": 1})
-	snapshot.Windows[0].UsedPercent = 100
 	must(t, db.Schedule(ctx, snapshot, testConfig(), now.Add(2*time.Minute)))
 	assertStates(t, db, map[string]int{"pending": 1})
 	alert, err := db.Claim(ctx, now.Add(time.Hour))
@@ -101,21 +101,27 @@ func TestCancelledFutureResetCanBeRearmedWithoutDuplicates(t *testing.T) {
 	assertStates(t, db, map[string]int{"failed": 1})
 }
 
-func TestScheduleCancelsRestoredFutureAllowanceButKeepsDueReset(t *testing.T) {
+func TestScheduleReleasesEarlyResetButKeepsDueReset(t *testing.T) {
 	ctx := context.Background()
 	db := openTestDB(t, t.TempDir())
 	now := storeTime()
 	initial := testSnapshot(now, now.Add(time.Hour), 100)
 	must(t, db.Schedule(ctx, initial, testConfig(), now))
-	available := initial
-	available.Windows = append([]quota.Window(nil), initial.Windows...)
-	available.Windows[0].UsedPercent = 10
-	must(t, db.Schedule(ctx, available, testConfig(), now.Add(time.Minute)))
-	assertStates(t, db, map[string]int{"cancelled": 1})
+	// Provider restores allowance 30 minutes early and starts a new window.
+	early := testSnapshot(now.Add(30*time.Minute), now.Add(5*time.Hour+30*time.Minute), 4)
+	must(t, db.Schedule(ctx, early, testConfig(), now.Add(30*time.Minute)))
+	alert, err := db.Claim(ctx, now.Add(30*time.Minute))
+	must(t, err)
+	if !alert.ResetAt.Equal(early.ObservedAt) {
+		t.Fatalf("early reset time = %s, want observation time %s", alert.ResetAt, early.ObservedAt)
+	}
+	must(t, db.Finish(ctx, alert, "sent", "", now, now))
+	must(t, db.Schedule(ctx, early, testConfig(), now.Add(31*time.Minute)))
+	assertStates(t, db, map[string]int{"sent": 1})
 
 	db = openTestDB(t, t.TempDir())
 	must(t, db.Schedule(ctx, initial, testConfig(), now))
-	available = testSnapshot(now.Add(time.Hour), now.Add(6*time.Hour), 10)
+	available := testSnapshot(now.Add(time.Hour), now.Add(6*time.Hour), 10)
 	must(t, db.Schedule(ctx, available, testConfig(), now.Add(time.Hour)))
 	assertStates(t, db, map[string]int{"pending": 1})
 }

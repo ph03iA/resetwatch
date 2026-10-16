@@ -4,5 +4,9 @@
 *.db
 *.db-shm
 *.db-wal
-.env
+.[eE][nN][vV]
+.[eE][nN][vV].*
+!.env.example
+*.[eE][nN][vV]
 .sites-cache/
+launch

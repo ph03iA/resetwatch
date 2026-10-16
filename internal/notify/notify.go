@@ -21,6 +21,7 @@ type Message struct {
 	ResetAt    time.Time
 	Confirmed  bool
 	OtherLimit bool
+	Test       bool
 }
 
 type Sender interface {
@@ -54,6 +55,16 @@ func validateMessage(m Message) error {
 	if m.Key == "" || len(m.Key) > 4096 {
 		return errors.New("email requires a nonempty message key of at most 4096 bytes")
 	}
+	if err := validateResetMetadata(m); err != nil {
+		return err
+	}
+	return ValidateAddresses(m.To, m.From)
+}
+
+func validateResetMetadata(m Message) error {
+	if m.Test {
+		return nil
+	}
 	if m.ResetAt.IsZero() {
 		return errors.New("email requires a reset time")
 	}
@@ -63,7 +74,7 @@ func validateMessage(m Message) error {
 	if err := validateLabel(m.Window); err != nil {
 		return errors.New("email window label is empty, too long, or contains control characters")
 	}
-	return ValidateAddresses(m.To, m.From)
+	return nil
 }
 
 // ValidateAddresses checks the configured recipient and sender without sending mail.
@@ -102,6 +113,9 @@ func mailbox(value string, displayName bool) (string, error) {
 }
 
 func messageContent(m Message) (subject, text, markup string) {
+	if m.Test {
+		return testMessageContent()
+	}
 	status := "EXPECTED"
 	explanation := "The recorded reset time has arrived. Availability has not been confirmed by fresh account data."
 	if m.Confirmed {
@@ -115,7 +129,16 @@ func messageContent(m Message) (subject, text, markup string) {
 		text += "\n\nA reported quota window is still exhausted. This reminder does not confirm access."
 	}
 	text += "\n\nSent by ResetWatch. Check your provider before starting work."
+	return subject, text, emailHTML(text)
+}
+
+func testMessageContent() (subject, text, markup string) {
+	subject = "ResetWatch: test email"
+	text = "TEST EMAIL\n\nThis is a delivery test you requested from ResetWatch.\n\nNo AI quota was checked. This message does not confirm a reset or available allowance.\n\nIf this message reached your inbox, ResetWatch can deliver email to this address."
+	return subject, text, emailHTML(text)
+}
+
+func emailHTML(text string) string {
 	paragraphs := strings.ReplaceAll(html.EscapeString(text), "\n\n", "</p><p>")
-	markup = "<!doctype html><html><body><main style=\"font-family:Arial,sans-serif;line-height:1.6;max-width:600px;margin:24px auto;padding:24px\"><p>" + paragraphs + "</p></main></body></html>"
-	return subject, text, markup
+	return "<!doctype html><html><body><main style=\"font-family:Arial,sans-serif;line-height:1.6;max-width:600px;margin:24px auto;padding:24px\"><p>" + paragraphs + "</p></main></body></html>"
 }

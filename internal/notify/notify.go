@@ -133,7 +133,7 @@ func messageContent(m Message) (subject, text, markup string) {
 	if m.OtherLimit {
 		paragraphs = append(paragraphs, fmt.Sprintf("Heads up: another %s limit is still used up, so access isn't confirmed yet.", provider))
 	}
-	details := fmt.Sprintf("Reset at %s · %s · %s", m.ResetAt.Local().Format("3:04 PM MST"), m.Window,
+	details := fmt.Sprintf("Reset at %s · %s · %s", m.ResetAt.UTC().Format("3:04 PM MST"), m.Window,
 		m.ResetAt.UTC().Format("2006-01-02 15:04:05 UTC"))
 	text = headline + "\n" + lead + "\n\n" + strings.Join(paragraphs, "\n\n") + "\n\n" + details + "\n\nSent by ResetWatch from your computer."
 	return subject, text, resetHTML(headline, lead, paragraphs, details)

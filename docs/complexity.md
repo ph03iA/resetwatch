@@ -340,3 +340,16 @@ Behavior verified: full suite and `go test -race` (64-bit build) pass; `gocyclo 
 | watch.windowAvailable | New | 2 |
 
 Behavior verified: new `TestStillExhaustedWindowWarnsWithoutConfirmation` failed before the change (3 cases) and passes after; full suite and `go test -race` (64-bit build) pass.
+
+
+## Indian Standard Time display - 2026-10-16
+
+New reset messages reuse the existing frozen `LocalResetAt` field, explicitly formatted in IST (UTC+05:30) with a date. The host's local zone is no longer used for this field. Existing frozen display text and the legacy UTC fallback are unchanged.
+
+| Function | Before CC | After CC |
+| --- | ---: | ---: |
+| watch.compose | 7 | 7 |
+
+Extracted: none; reused the existing message field, freeze operation and renderer. Only `compose` changed behavior. All production functions in its file were measured; the all-functions complexity ceiling including tests passes.
+
+Behavior verified: the merged-main baseline race suite passed. The new composition regression failed on all three cases before the one-line fix, then passed for Codex, Claude and a year rollover while the host zone was UTC-08:00. Full race tests and vet pass. Tests compare actual Resend request JSON and delivery keys after message serialization and a host-zone change, and verify frozen IST display text survives SQLite reopen without being replaced. Legacy UTC rendering remains covered. The Windows CLI was rebuilt and its version command passed.

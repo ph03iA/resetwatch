@@ -246,7 +246,7 @@ func TestFreezeMessagePreservesExactRetryPayloadAcrossReopen(t *testing.T) {
 	alert, err := db.Claim(ctx, due)
 	must(t, err)
 	initial := notify.Message{Key: alert.ID, To: alert.To, From: alert.From, Provider: alert.Provider,
-		Window: alert.Window, ResetAt: alert.ResetAt, OtherLimit: true}
+		Window: alert.Window, ResetAt: alert.ResetAt, OtherLimit: true, LocalResetAt: "2030-01-02 4:30 PM IST"}
 	frozen, err := db.FreezeMessage(ctx, alert, initial)
 	must(t, err)
 	firstPayload := storedPayload(t, db, alert.ID)
@@ -257,6 +257,7 @@ func TestFreezeMessagePreservesExactRetryPayloadAcrossReopen(t *testing.T) {
 	must(t, err)
 	changed := initial
 	changed.Confirmed, changed.OtherLimit = true, false
+	changed.LocalResetAt = "2030-01-02 11:00 AM UTC"
 	retried, err := db.FreezeMessage(ctx, alert, changed)
 	must(t, err)
 	if !reflect.DeepEqual(frozen, retried) || firstPayload != storedPayload(t, db, alert.ID) {

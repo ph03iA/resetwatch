@@ -72,3 +72,36 @@ func TestFrozenLocalResetTimeSurvivesZoneChange(t *testing.T) {
 		t.Fatalf("frozen local reset time was not used: %s", payload.Text)
 	}
 }
+
+func TestResendIndianTimeRetryPreservesWirePayload(t *testing.T) {
+	originalZone := time.Local
+	t.Cleanup(func() { time.Local = originalZone })
+	message := sampleMessage()
+	message.ResetAt = time.Date(2026, 10, 15, 19, 45, 0, 0, time.UTC)
+	message.LocalResetAt = "2026-10-16 1:15 AM IST"
+	service := Resend{APIKey: "re_fake_test_key"}
+	time.Local = time.FixedZone("TestWest", -8*3600)
+	firstBody, firstKey := resendRequestData(t, service, message)
+	data, err := json.Marshal(message)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var restored Message
+	if err := json.Unmarshal(data, &restored); err != nil {
+		t.Fatal(err)
+	}
+	time.Local = time.FixedZone("TestEast", 9*3600)
+	retryBody, retryKey := resendRequestData(t, service, restored)
+	if firstKey != retryKey || !bytes.Equal(firstBody, retryBody) {
+		t.Fatal("persisted Indian-time retry changed the delivery key or email JSON")
+	}
+	var payload emailPayload
+	if err := json.Unmarshal(retryBody, &payload); err != nil {
+		t.Fatal(err)
+	}
+	for _, body := range []string{payload.Text, payload.HTML} {
+		if !strings.Contains(body, "Reset at 2026-10-16 1:15 AM IST") || !strings.Contains(body, "2026-10-15 19:45:00 UTC") {
+			t.Fatal("both email alternatives must show the frozen Indian date/time and exact UTC reference")
+		}
+	}
+}

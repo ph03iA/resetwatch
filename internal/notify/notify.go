@@ -21,8 +21,7 @@ type Message struct {
 	Window   string
 	ResetAt  time.Time
 	Duration time.Duration // reset window length, used for "5-hour"/"weekly"; zero when unknown
-	// LocalResetAt is the reset time in the user's zone, fixed once when the message is frozen
-	// so retries under the same delivery key send identical text.
+	// LocalResetAt freezes the displayed reset time; new messages use IST, older retries keep their original text.
 	LocalResetAt string `json:",omitempty"`
 	Confirmed    bool
 	OtherLimit   bool

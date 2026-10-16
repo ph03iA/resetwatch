@@ -115,3 +115,16 @@ Implemented on `fix/repo-audit`, based on `a585649`. Each of the five focused co
 - Existing exported signatures were preserved, including the deprecated session-comparison helper. New ingestion uses the atomic recording path and does not depend on that helper.
 
 Not checked: real provider/account behavior, real inbox delivery and native macOS/Linux execution. Pre-fix local-time request bodies were never stored and cannot be reconstructed; inspect such outstanding retries before upgrading. Older stored confirmed Claude retries are cancelled without sending or rewriting their frozen bodies. No real state database or environment file was inspected or migrated.
+
+
+## Indian Standard Time and review cross-check - 2026-10-16
+
+Implemented locally on `fix/india-reset-time` from merged `main` at `c06eb7e`. New reset emails show the Indian date and time (IST, UTC+05:30) and keep the exact UTC reference. A fixed standard-library zone avoids dependence on host settings or installed zone data. Previously frozen local-time text and legacy UTC messages retain their original wire format.
+
+- Fresh full `go test -race -count=1 ./...` passed before and after the fix using Go 1.27.2 windows/amd64. The new compose regression first failed for all three cases: Codex, Claude across midnight and Codex across New Year.
+- Actual Resend request construction tests verify both text and HTML, the UTC reference, byte-identical JSON after serialization and a host-zone change, and the same delivery key. SQLite reopen tests verify changed display text cannot replace the frozen original. These tests do not send email.
+- `go vet ./...`, `gocyclo -over 10 cmd internal`, formatting of edited Go files and `git diff --check` passed. The changed production function `compose` remains at CC 7. Rebuilt `bin/resetwatch.exe`; its version command returned `resetwatch 0.1.0`.
+- Rechecked the pasted review against current merged code, rather than its earlier snapshot. The Codex warning regression is already fixed, including denied and unknown backend permission. Session tracking, standalone `MoveAlerts` and the unused `Observe` argument/read were already removed, and repository callers were updated. No dangling checked-in caller was found.
+- A separate synthetic decode-to-database-to-watcher check confirmed expired cached Claude windows do not trigger the warning, while an unexpired cached weekly window at 100% does; neither confirms allowance. The current warning is last-known usage, so historical wording would be more precise. No actual early provider reset or resulting false warning was observed.
+
+Validation used no live quota, inference, real email or deployment. No real environment file, account token or state database was inspected. Native macOS/Linux execution was not checked.

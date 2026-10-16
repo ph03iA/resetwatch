@@ -367,12 +367,29 @@ func TestStepWithoutPollingSendsClaudeResetFromSavedReadings(t *testing.T) {
 	}
 }
 
-func TestComposeFixesResetTimeInUserZone(t *testing.T) {
+func TestComposeFreezesIndianResetDateAndTime(t *testing.T) {
 	originalZone := time.Local
 	t.Cleanup(func() { time.Local = originalZone })
-	time.Local = time.FixedZone("IST", 5*3600+30*60)
-	message := compose(composeAlert(watchTime()), nil, watchTime())
-	if message.LocalResetAt != "3:30 PM IST" {
-		t.Fatalf("LocalResetAt = %q, want the reset in the user's zone", message.LocalResetAt)
+	time.Local = time.FixedZone("TestWest", -8*3600)
+	for _, test := range []struct {
+		name, provider string
+		reset          time.Time
+		want           string
+	}{
+		{"codex", "codex", time.Date(2026, 10, 15, 15, 0, 0, 0, time.UTC), "2026-10-15 8:30 PM IST"},
+		{"claude", "claude", time.Date(2026, 10, 15, 19, 45, 0, 0, time.UTC), "2026-10-16 1:15 AM IST"},
+		{"year rollover", "codex", time.Date(2026, 12, 31, 20, 0, 0, 0, time.UTC), "2027-01-01 1:30 AM IST"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			alert := composeAlert(test.reset)
+			alert.Provider = test.provider
+			message := compose(alert, nil, test.reset)
+			if message.LocalResetAt != test.want {
+				t.Fatalf("Indian reset display = %q, want %q", message.LocalResetAt, test.want)
+			}
+			if !message.ResetAt.Equal(test.reset) {
+				t.Fatal("display conversion changed the scheduled reset instant")
+			}
+		})
 	}
 }

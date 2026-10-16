@@ -142,7 +142,7 @@ func (e *Engine) cancelReason(ctx context.Context, alert store.Alert, config sto
 func compose(alert store.Alert, snapshot *quota.Snapshot, now time.Time) notify.Message {
 	message := notify.Message{Key: alert.ID, To: alert.To, From: alert.From,
 		Provider: alert.Provider, Window: alert.Window, ResetAt: alert.ResetAt, Duration: windowDuration(snapshot, alert),
-		LocalResetAt: alert.ResetAt.Local().Format("3:04 PM MST")}
+		LocalResetAt: alert.ResetAt.In(time.FixedZone("IST", 5*3600+30*60)).Format("2006-01-02 3:04 PM MST")}
 	if !observedAfterReset(snapshot, alert, now) {
 		return message
 	}

@@ -140,13 +140,13 @@ func checkPayload(t *testing.T, payload emailPayload) {
 	if !strings.Contains(payload.From, "alerts@example.com") {
 		t.Errorf("unexpected sender: %q", payload.From)
 	}
-	if !strings.Contains(payload.Subject, "reset expected") {
+	if !strings.Contains(payload.Subject, "should be back") {
 		t.Errorf("unexpected subject: %q", payload.Subject)
 	}
-	if !strings.Contains(payload.Text, "Availability has not been confirmed") {
+	if !strings.Contains(payload.Text, "couldn't confirm it with fresh account data") {
 		t.Errorf("expected uncertainty explanation in %q", payload.Text)
 	}
-	if !strings.Contains(payload.HTML, "EXPECTED RESET") {
+	if !strings.Contains(payload.HTML, "should be back.</h1>") {
 		t.Errorf("expected HTML alternative")
 	}
 }
@@ -164,11 +164,43 @@ func TestMessageContentEscapesHTML(t *testing.T) {
 	if !strings.Contains(plain, m.Provider) || !strings.Contains(markup, "&amp;") {
 		t.Fatal("plain text or escaped window missing")
 	}
-	if !strings.Contains(subject, "reset confirmed") || !strings.Contains(plain, "CONFIRMED RESET") {
+	if !strings.Contains(subject, "is back") || !strings.Contains(plain, "Fresh account data confirms") {
 		t.Fatal("confirmed status missing")
 	}
-	if !strings.Contains(plain, "A reported quota window is still exhausted") {
+	if !strings.Contains(plain, "limit is still used up") {
 		t.Fatal("other-window warning missing")
+	}
+}
+
+func TestResetEmailNamesWindowAndKeepsClaimsApart(t *testing.T) {
+	m := sampleMessage()
+	m.Provider = "codex"
+	m.Duration = 5 * time.Hour
+	m.Confirmed = true
+	subject, plain, _ := messageContent(m)
+	if subject != "Your Codex 5-hour limit is back. Get back to work" || !strings.Contains(plain, "get back to work") {
+		t.Fatalf("confirmed email: subject %q, text %q", subject, plain)
+	}
+	m.Confirmed = false
+	subject, plain, _ = messageContent(m)
+	if subject != "Your Codex 5-hour limit should be back. Check before you start" || strings.Contains(plain, "get back to work") || !strings.Contains(plain, "check Codex") {
+		t.Fatalf("unconfirmed email must not claim availability: subject %q, text %q", subject, plain)
+	}
+	if !strings.Contains(plain, "2026-10-15 15:00:00 UTC") {
+		t.Fatal("exact UTC reset time missing")
+	}
+}
+
+func TestWindowLabel(t *testing.T) {
+	cases := map[time.Duration]string{0: "", -time.Hour: "", 5 * time.Hour: "5-hour", 7 * 24 * time.Hour: "weekly",
+		24 * time.Hour: "1-day", 90 * time.Minute: "90-minute"}
+	for duration, want := range cases {
+		if got := windowLabel(duration); got != want {
+			t.Errorf("windowLabel(%v) = %q, want %q", duration, got, want)
+		}
+	}
+	if got := limitName(Message{Provider: "codex"}); got != "Codex limit" {
+		t.Errorf("unknown window length should fall back to a generic name, got %q", got)
 	}
 }
 

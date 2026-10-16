@@ -89,6 +89,9 @@ func TestStepSchedulesThenSendsConfirmedResetOnce(t *testing.T) {
 	if len(sender.messages) != 1 || !sender.messages[0].Confirmed {
 		t.Fatalf("fresh reset was not delivered as confirmed: %#v", sender.messages)
 	}
+	if sender.messages[0].Duration != 5*time.Hour {
+		t.Fatalf("window length for the email label = %v, want 5h", sender.messages[0].Duration)
+	}
 	must(t, engine.Step(ctx))
 	if len(sender.messages) != 1 {
 		t.Fatal("delivered an already completed reset more than once")

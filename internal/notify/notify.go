@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 	"unicode"
+	"unicode/utf8"
 )
 
 type Message struct {
@@ -19,6 +20,7 @@ type Message struct {
 	Provider   string
 	Window     string
 	ResetAt    time.Time
+	Duration   time.Duration // reset window length, used for "5-hour"/"weekly"; zero when unknown
 	Confirmed  bool
 	OtherLimit bool
 	Test       bool
@@ -116,20 +118,68 @@ func messageContent(m Message) (subject, text, markup string) {
 	if m.Test {
 		return testMessageContent()
 	}
-	status := "EXPECTED"
-	explanation := "The recorded reset time has arrived. Availability has not been confirmed by fresh account data."
-	if m.Confirmed {
-		status = "CONFIRMED"
-		explanation = "Fresh account data shows allowance available in all reported windows."
+	provider, limit := providerName(m.Provider), limitName(m)
+	headline := fmt.Sprintf("Your %s is back.", limit)
+	lead := "Time to get back to work."
+	paragraphs := []string{"Fresh account data confirms allowance is available in every reported window."}
+	subject = fmt.Sprintf("Your %s is back. Get back to work", limit)
+	// A scheduled reset and freshly confirmed allowance are different claims.
+	if !m.Confirmed {
+		headline = fmt.Sprintf("Your %s should be back.", limit)
+		lead = "Its reset time has arrived."
+		paragraphs[0] = fmt.Sprintf("ResetWatch couldn't confirm it with fresh account data, so check %s before you dive in.", provider)
+		subject = fmt.Sprintf("Your %s should be back. Check before you start", limit)
 	}
-	subject = fmt.Sprintf("ResetWatch: %s %s reset %s", m.Provider, m.Window, strings.ToLower(status))
-	text = fmt.Sprintf("%s RESET\n\n%s / %s\nReset time: %s\n\n%s", status, m.Provider, m.Window,
-		m.ResetAt.UTC().Format("2006-01-02 15:04:05 UTC"), explanation)
 	if m.OtherLimit {
-		text += "\n\nA reported quota window is still exhausted. This reminder does not confirm access."
+		paragraphs = append(paragraphs, fmt.Sprintf("Heads up: another %s limit is still used up, so access isn't confirmed yet.", provider))
 	}
-	text += "\n\nSent by ResetWatch. Check your provider before starting work."
-	return subject, text, emailHTML(text)
+	details := fmt.Sprintf("Reset at %s · %s · %s", m.ResetAt.Local().Format("3:04 PM MST"), m.Window,
+		m.ResetAt.UTC().Format("2006-01-02 15:04:05 UTC"))
+	text = headline + "\n" + lead + "\n\n" + strings.Join(paragraphs, "\n\n") + "\n\n" + details + "\n\nSent by ResetWatch from your computer."
+	return subject, text, resetHTML(headline, lead, paragraphs, details)
+}
+
+func providerName(provider string) string {
+	first, size := utf8.DecodeRuneInString(provider)
+	return string(unicode.ToUpper(first)) + provider[size:]
+}
+
+func limitName(m Message) string {
+	if label := windowLabel(m.Duration); label != "" {
+		return providerName(m.Provider) + " " + label + " limit"
+	}
+	return providerName(m.Provider) + " limit"
+}
+
+// windowLabel names a reset window by its length, such as "5-hour" or "weekly"; empty when unknown.
+func windowLabel(d time.Duration) string {
+	day := 24 * time.Hour
+	switch {
+	case d <= 0:
+		return ""
+	case d == 7*day:
+		return "weekly"
+	case d%day == 0:
+		return fmt.Sprintf("%d-day", d/day)
+	case d%time.Hour == 0:
+		return fmt.Sprintf("%d-hour", d/time.Hour)
+	}
+	return fmt.Sprintf("%d-minute", d/time.Minute)
+}
+
+func resetHTML(headline, lead string, paragraphs []string, details string) string {
+	var b strings.Builder
+	b.WriteString(`<!doctype html><html><body style="margin:0;padding:24px;background:#f4f1ea;font-family:Arial,Helvetica,sans-serif;color:#1d1c19">`)
+	b.WriteString(`<div style="max-width:560px;margin:0 auto;background:#ffffff;border:1px solid #e4dfd3;border-radius:14px;overflow:hidden">`)
+	b.WriteString(`<div style="background:#151513;padding:28px 32px;color:#ece9e1"><p style="margin:0 0 18px;font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:#c89370">ResetWatch</p>`)
+	fmt.Fprintf(&b, `<h1 style="margin:0;font-size:28px;line-height:1.2;font-weight:600">%s</h1>`, html.EscapeString(headline))
+	fmt.Fprintf(&b, `<p style="margin:10px 0 0;font-size:18px;color:#e2b48f">%s</p></div><div style="padding:26px 32px">`, html.EscapeString(lead))
+	for _, paragraph := range paragraphs {
+		fmt.Fprintf(&b, `<p style="margin:0 0 14px;font-size:15px;line-height:1.6">%s</p>`, html.EscapeString(paragraph))
+	}
+	fmt.Fprintf(&b, `<p style="margin:18px 0 0;padding-top:14px;border-top:1px solid #eee9de;font-size:12px;line-height:1.6;color:#77736a">%s<br>Sent by ResetWatch from your computer.</p>`, html.EscapeString(details))
+	b.WriteString(`</div></div></body></html>`)
+	return b.String()
 }
 
 func testMessageContent() (subject, text, markup string) {

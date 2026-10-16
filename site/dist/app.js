@@ -1,65 +1,49 @@
 "use strict";
 
-const clone = "git clone https://github.com/ph03iA/resetwatch.git\ncd resetwatch\n";
-const unixBuild = `${clone}go build -o resetwatch ./cmd/resetwatch\n./resetwatch version`;
+const clone = "git clone https://github.com/ph03iA/resetwatch.git\ncd resetwatch\ngo build ./cmd/resetwatch\n";
 
+// Windows commands also work in Command Prompt: .\ paths and double quotes only.
 const platforms = {
   windows: {
-    shell: "POWERSHELL",
-    help: "In PowerShell, open the folder that should hold ResetWatch. Requires Git and Go 1.27.2 or newer.",
+    shell: "PowerShell / CMD",
+    help: "In PowerShell or Command Prompt, open the folder that should hold ResetWatch. Requires Git and Go 1.27.2 or newer.",
     executable: ".\\resetwatch.exe",
-    unpack: `${clone}go build -o resetwatch.exe ./cmd/resetwatch\n.\\resetwatch.exe version`,
   },
-  macos: {
-    shell: "ZSH / BASH",
+  unix: {
+    shell: "Terminal",
     help: "In Terminal, open the folder that should hold ResetWatch. Requires Git and Go 1.27.2 or newer.",
     executable: "./resetwatch",
-    unpack: unixBuild,
-  },
-  linux: {
-    shell: "BASH",
-    help: "In your terminal, open the folder that should hold ResetWatch. Requires Git and Go 1.27.2 or newer.",
-    executable: "./resetwatch",
-    unpack: unixBuild,
   },
 };
 
 const tabs = [...document.querySelectorAll("[data-os]")];
 const status = document.getElementById("copy-status");
 
-function updateInstallCommands(platform) {
-  const notify = `${platform.executable} notify --email you@example.com --from 'ResetWatch <onboarding@resend.dev>'`;
-  document.getElementById("install-command").textContent = platform.unpack;
-  document.getElementById("connect-command").textContent = `${platform.executable} connect codex`;
-  document.getElementById("watch-command").textContent = `${notify}\n${platform.executable} watch`;
-}
-
-function updatePlatformText(platform) {
-  document.getElementById("shell-label").textContent = platform.shell;
-  document.getElementById("unpack-help").textContent = platform.help;
-}
-
 function selectPlatform(tab) {
   const platform = platforms[tab.dataset.os];
+  const run = platform.executable;
   tabs.forEach((item) => {
     const selected = item === tab;
     item.setAttribute("aria-selected", String(selected));
     item.tabIndex = selected ? 0 : -1;
   });
   document.getElementById("installation-panel").setAttribute("aria-labelledby", tab.id);
-  updatePlatformText(platform);
-  updateInstallCommands(platform);
-  status.textContent = "";
+  document.getElementById("shell-label").textContent = platform.shell;
+  document.getElementById("unpack-help").textContent = platform.help;
+  document.getElementById("install-command").textContent = `${clone}${run} version`;
+  document.getElementById("connect-command").textContent = `${run} connect codex`;
+  document.getElementById("watch-command").textContent = `${run} notify --email you@example.com --from "ResetWatch <onboarding@resend.dev>"\n${run} watch`;
 }
 
 function handleTabKey(event) {
-  const offsets = { ArrowRight: 1, ArrowLeft: -1, Home: -tabs.indexOf(event.currentTarget), End: tabs.length - 1 - tabs.indexOf(event.currentTarget) };
+  const index = tabs.indexOf(event.currentTarget);
+  const offsets = { ArrowRight: 1, ArrowLeft: -1, Home: -index, End: tabs.length - 1 - index };
   const offset = offsets[event.key];
   if (offset === undefined) return;
   event.preventDefault();
-  const nextIndex = (tabs.indexOf(event.currentTarget) + offset + tabs.length) % tabs.length;
-  selectPlatform(tabs[nextIndex]);
-  tabs[nextIndex].focus();
+  const next = tabs[(index + offset + tabs.length) % tabs.length];
+  selectPlatform(next);
+  next.focus();
 }
 
 function selectCommandText(target) {
@@ -74,10 +58,13 @@ function selectCommandText(target) {
 function showCopySuccess(button) {
   button.firstChild.textContent = "Copied ";
   button.dataset.copied = "true";
+  // The button already shows "Copied"; the zero-height status is for screen readers.
+  delete status.dataset.error;
   status.textContent = "Commands copied to your clipboard.";
   window.setTimeout(() => {
     button.firstChild.textContent = "Copy ";
     delete button.dataset.copied;
+    status.textContent = "";
   }, 2200);
 }
 
@@ -89,6 +76,7 @@ async function copyCommand(event) {
     showCopySuccess(button);
   } catch {
     selectCommandText(target);
+    status.dataset.error = "true";
     status.textContent = "Clipboard access is unavailable. The commands are selected; use your keyboard to copy.";
   }
 }
@@ -98,3 +86,18 @@ tabs.forEach((tab) => {
   tab.addEventListener("keydown", handleTabKey);
 });
 document.querySelectorAll("[data-copy]").forEach((button) => button.addEventListener("click", copyCommand));
+
+// Content stays visible without JavaScript; sections only fade in when the observer exists.
+if ("IntersectionObserver" in window) {
+  const observer = new IntersectionObserver((entries) => {
+    entries.filter((entry) => entry.isIntersecting).forEach((entry) => {
+      entry.target.classList.add("is-visible");
+      observer.unobserve(entry.target);
+    });
+  }, { rootMargin: "0px 0px -8% 0px" });
+  document.documentElement.classList.add("js-reveal");
+  document.querySelectorAll("main .section-heading, .lifecycle li, .install-workbook, .notes-layout > *, .footer-heading").forEach((element) => {
+    element.classList.add("reveal");
+    observer.observe(element);
+  });
+}

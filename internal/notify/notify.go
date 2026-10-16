@@ -14,16 +14,19 @@ import (
 )
 
 type Message struct {
-	Key        string
-	To         string
-	From       string
-	Provider   string
-	Window     string
-	ResetAt    time.Time
-	Duration   time.Duration // reset window length, used for "5-hour"/"weekly"; zero when unknown
-	Confirmed  bool
-	OtherLimit bool
-	Test       bool
+	Key      string
+	To       string
+	From     string
+	Provider string
+	Window   string
+	ResetAt  time.Time
+	Duration time.Duration // reset window length, used for "5-hour"/"weekly"; zero when unknown
+	// LocalResetAt is the reset time in the user's zone, fixed once when the message is frozen
+	// so retries under the same delivery key send identical text.
+	LocalResetAt string `json:",omitempty"`
+	Confirmed    bool
+	OtherLimit   bool
+	Test         bool
 }
 
 type Sender interface {
@@ -133,10 +136,18 @@ func messageContent(m Message) (subject, text, markup string) {
 	if m.OtherLimit {
 		paragraphs = append(paragraphs, fmt.Sprintf("Heads up: another %s limit is still used up, so access isn't confirmed yet.", provider))
 	}
-	details := fmt.Sprintf("Reset at %s · %s · %s", m.ResetAt.UTC().Format("3:04 PM MST"), m.Window,
+	details := fmt.Sprintf("Reset at %s · %s · %s", localResetAt(m), m.Window,
 		m.ResetAt.UTC().Format("2006-01-02 15:04:05 UTC"))
 	text = headline + "\n" + lead + "\n\n" + strings.Join(paragraphs, "\n\n") + "\n\n" + details + "\n\nSent by ResetWatch from your computer."
 	return subject, text, resetHTML(headline, lead, paragraphs, details)
+}
+
+// localResetAt falls back to UTC for messages frozen before LocalResetAt existed, keeping their retries identical.
+func localResetAt(m Message) string {
+	if m.LocalResetAt != "" {
+		return m.LocalResetAt
+	}
+	return m.ResetAt.UTC().Format("3:04 PM MST")
 }
 
 func providerName(provider string) string {

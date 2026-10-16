@@ -2,7 +2,7 @@
 
 ## Unreleased — 2026-10-16
 
-- Whole-repository audit fixes: preserve Codex backend usage permission; keep Claude resets expected-only; atomically save readings, notification settings and reminders; recover expired claims and cancelled destinations without reviving completed events; render retry times in UTC; document watcher restarts after connection changes; correct Claude support copy and keep the keyboard skip link above the header.
+- Whole-repository audit fixes: preserve Codex backend usage permission; keep Claude resets expected-only; atomically save readings, notification settings and reminders; recover expired claims and cancelled destinations without reviving completed events; freeze the local reset time once per message so retries stay identical; remove unused session tracking and the standalone reminder-move entry point; document watcher restarts after connection changes; correct Claude support copy and keep the keyboard skip link above the header.
 
 - Claude support: `resetwatch claude-statusline` reads Claude Code's documented status line rate limits (5-hour and weekly) and schedules reset reminders. The watcher skips Codex polling until Codex is connected and uses saved readings for Claude alerts.
 - Claude callbacks save readings and reminders together, preserve independently omitted windows and never claim confirmed allowance. `notify` schedules saved observations on first setup and moves outstanding reminders when addresses change; `status` shows Claude and accepts `--provider`.

@@ -51,8 +51,6 @@ CREATE TABLE IF NOT EXISTS alerts (
  lease_until INTEGER NOT NULL DEFAULT 0, last_error TEXT NOT NULL DEFAULT '',
  updated_at INTEGER NOT NULL, payload TEXT NOT NULL DEFAULT '');
 CREATE INDEX IF NOT EXISTS alerts_due ON alerts(state, next_attempt);
-CREATE TABLE IF NOT EXISTS readings (session_id TEXT NOT NULL, window_id TEXT NOT NULL,
- used REAL NOT NULL, resets_at INTEGER NOT NULL, PRIMARY KEY (session_id, window_id));
 PRAGMA user_version = 1;`
 
 func Open(dir string) (*DB, error) {

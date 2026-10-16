@@ -19,7 +19,7 @@ func (a *application) claudeStatusLine(ctx context.Context, args []string) error
 		return err
 	}
 	now := time.Now().UTC()
-	reading, _, err := quota.DecodeClaudeStatusLine(a.in, now)
+	reading, err := quota.DecodeClaudeStatusLine(a.in, now)
 	if errors.Is(err, quota.ErrNoClaudeLimits) {
 		return nil // nothing to record yet; keep the status line empty
 	}

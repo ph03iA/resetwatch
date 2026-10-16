@@ -366,3 +366,13 @@ func TestStepWithoutPollingSendsClaudeResetFromSavedReadings(t *testing.T) {
 		}
 	}
 }
+
+func TestComposeFixesResetTimeInUserZone(t *testing.T) {
+	originalZone := time.Local
+	t.Cleanup(func() { time.Local = originalZone })
+	time.Local = time.FixedZone("IST", 5*3600+30*60)
+	message := compose(composeAlert(watchTime()), nil, watchTime())
+	if message.LocalResetAt != "3:30 PM IST" {
+		t.Fatalf("LocalResetAt = %q, want the reset in the user's zone", message.LocalResetAt)
+	}
+}

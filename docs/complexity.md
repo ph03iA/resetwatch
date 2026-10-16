@@ -305,3 +305,25 @@ Measured all production functions in touched Go files against `a585649` with goc
 Extracted: transaction-compatible config/snapshot reads and writes, shared `schedule`, and individual `moveAlert` handling. Added atomic `RecordSnapshot`, `ConfigureNotifications`, and `SaveCodexBinary` operations with small named merge and reconciliation helpers. Removed the CLI `recordClaude` and `reschedule` orchestration. The existing exported `NewReadings` remains compatible but deprecated; ingestion no longer depends on it.
 
 Behavior verified: baseline and combined race suites pass. Regression cases cover failed recording rollback/replay, concurrent partial callbacks, backend allowance denial, expected-only Claude reminders, due address round trips, live/expired claims, immutable payloads, terminal destinations, concurrent connection/settings updates and fixed-UTC request bytes.
+
+## Review follow-ups — 2026-10-16
+
+Local reset time is computed once in `compose` and frozen in `notify.Message.LocalResetAt`; the email falls back to UTC for messages frozen without it. Removed unused session tracking (`NewReadings`, the `readings` table, `session_id` parsing), the standalone `MoveAlerts` wrapper (its test now runs through `ConfigureNotifications`) and `Observe`'s unused settings argument.
+
+| Function | Before CC | After CC |
+| --- | ---: | ---: |
+| watch.compose | 7 | 7 |
+| quota.DecodeClaudeStatusLine | 8 | 7 |
+| main.(*application).claudeStatusLine | 5 | 5 |
+| notify.messageContent | 4 | 4 |
+| store.moveAlerts | 4 | 4 |
+| watch.(*Engine).Step | 4 | 3 |
+| watch.(*Engine).Observe | 3 | 3 |
+| main.(*application).connectCodex | 3 | 2 |
+| main.(*application).refresh | 2 | 2 |
+| notify.localResetAt | New | 2 |
+| store.(*DB).NewReadings | 7 | Removed |
+| store.(*DB).MoveAlerts | 4 | Removed |
+| quota.validSessionID | 3 | Removed |
+
+Behavior verified: full suite and `go test -race` (64-bit build) pass; `gocyclo -over 10 cmd internal` passes. New tests cover the frozen local time surviving a time-zone change, `compose` using the user's zone, and Claude data without `session_id`.

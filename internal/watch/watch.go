@@ -34,15 +34,11 @@ func (e *Engine) log(message string) {
 }
 
 func (e *Engine) Step(ctx context.Context) error {
-	config, err := e.DB.Config(ctx)
-	if err != nil {
-		return err
-	}
 	// A nil Provider means nothing to poll (Claude readings arrive from its status line instead).
 	var snapshot *quota.Snapshot
 	var observationErr error
 	if e.Provider != nil {
-		snapshot, observationErr = e.Observe(ctx, config)
+		snapshot, observationErr = e.Observe(ctx)
 	}
 	if observationErr != nil {
 		e.log("Quota refresh unavailable; due emails will describe expected resets only.")
@@ -51,7 +47,8 @@ func (e *Engine) Step(ctx context.Context) error {
 	return errors.Join(observationErr, deliveryErr)
 }
 
-func (e *Engine) Observe(ctx context.Context, config store.Config) (*quota.Snapshot, error) {
+// Observe reads the provider and records the reading; RecordSnapshot loads current settings itself.
+func (e *Engine) Observe(ctx context.Context) (*quota.Snapshot, error) {
 	snapshot, err := e.Provider.Read(ctx)
 	if err != nil {
 		return nil, err
@@ -143,7 +140,8 @@ func (e *Engine) cancelReason(ctx context.Context, alert store.Alert, config sto
 
 func compose(alert store.Alert, snapshot *quota.Snapshot, now time.Time) notify.Message {
 	message := notify.Message{Key: alert.ID, To: alert.To, From: alert.From,
-		Provider: alert.Provider, Window: alert.Window, ResetAt: alert.ResetAt, Duration: windowDuration(snapshot, alert)}
+		Provider: alert.Provider, Window: alert.Window, ResetAt: alert.ResetAt, Duration: windowDuration(snapshot, alert),
+		LocalResetAt: alert.ResetAt.Local().Format("3:04 PM MST")}
 	if !freshForAlert(snapshot, alert, now) {
 		return message
 	}

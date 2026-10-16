@@ -48,13 +48,9 @@ func (a *application) connectFlags(args []string) (string, error) {
 }
 
 func (a *application) connectCodex(ctx context.Context, binary string) error {
-	config, err := a.db.Config(ctx)
-	if err != nil {
-		return err
-	}
 	provider := quota.Codex{Binary: binary, Timeout: 15 * time.Second, Version: version}
 	engine := watch.Engine{DB: a.db, Provider: provider}
-	if _, err := engine.Observe(ctx, config); err != nil {
+	if _, err := engine.Observe(ctx); err != nil {
 		return fmt.Errorf("connect Codex: %w", err)
 	}
 	return a.db.SaveCodexBinary(ctx, binary)
@@ -139,7 +135,7 @@ func (a *application) refresh(ctx context.Context) error {
 		return err
 	}
 	engine := watch.Engine{DB: a.db, Provider: quota.Codex{Binary: config.CodexBin, Timeout: 15 * time.Second, Version: version}}
-	_, err = engine.Observe(ctx, config)
+	_, err = engine.Observe(ctx)
 	return err
 }
 

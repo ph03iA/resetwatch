@@ -394,10 +394,11 @@ func must(t *testing.T, err error) {
 	}
 }
 
-func TestMoveAlertsKeepsDueReminderDueAndFrozenPayload(t *testing.T) {
+func TestAddressChangeKeepsDueReminderDueAndFrozenPayload(t *testing.T) {
 	ctx := context.Background()
 	db := openTestDB(t, t.TempDir())
 	now := storeTime()
+	must(t, db.SaveConfig(ctx, testConfig()))
 	must(t, db.Schedule(ctx, testSnapshot(now, now.Add(time.Hour), 100), testConfig(), now))
 	due := now.Add(2 * time.Hour) // reset passed, not delivered yet
 	old, err := db.Claim(ctx, due)
@@ -407,8 +408,11 @@ func TestMoveAlertsKeepsDueReminderDueAndFrozenPayload(t *testing.T) {
 	must(t, db.Finish(ctx, old, "retry", "temporary", due, due))
 	moved := testConfig()
 	moved.To = "new@example.test"
-	must(t, db.MoveAlerts(ctx, moved, due))
-	must(t, db.MoveAlerts(ctx, moved, due)) // same settings again: nothing more to move
+	must(t, db.ConfigureNotifications(ctx, moved.To, moved.From, due))
+	must(t, db.ConfigureNotifications(ctx, moved.To, moved.From, due)) // same settings again: nothing more to move
+	if config, err := db.Config(ctx); err != nil || config.To != moved.To {
+		t.Fatalf("settings were not saved with the moved reminder: %#v %v", config, err)
+	}
 	alert, err := db.Claim(ctx, due)
 	must(t, err)
 	if alert.To != moved.To || alert.ID == old.ID || alert.Attempts != 1 || !alert.ResetAt.Equal(old.ResetAt) {

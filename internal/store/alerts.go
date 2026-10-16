@@ -202,24 +202,9 @@ func (d *DB) Retry(ctx context.Context, id string, now time.Time) error {
 	return err
 }
 
-// MoveAlerts readdresses undelivered reminders after the email settings change. Each gets a new
+// moveAlerts readdresses undelivered reminders after the email settings change. Each gets a new
 // delivery key and an empty payload; the old entry is cancelled with its frozen message untouched.
 // Reset and due times carry over, so an already-due reminder stays due.
-func (d *DB) MoveAlerts(ctx context.Context, config Config, now time.Time) error {
-	tx, err := d.db.BeginTx(ctx, nil)
-	if err != nil {
-		return err
-	}
-	defer tx.Rollback()
-	if err := rejectActiveDelivery(ctx, tx, config, now); err != nil {
-		return err
-	}
-	if err := moveAlerts(ctx, tx, config, now); err != nil {
-		return err
-	}
-	return tx.Commit()
-}
-
 func moveAlerts(ctx context.Context, tx *sql.Tx, config Config, now time.Time) error {
 	moving, err := alertsToMove(ctx, tx, config, now)
 	if err != nil {

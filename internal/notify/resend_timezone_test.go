@@ -56,3 +56,19 @@ func resendRequestData(t *testing.T, service Resend, message Message) ([]byte, s
 	}
 	return body, request.Header.Get("Idempotency-Key")
 }
+
+func TestFrozenLocalResetTimeSurvivesZoneChange(t *testing.T) {
+	originalZone := time.Local
+	t.Cleanup(func() { time.Local = originalZone })
+	message := sampleMessage()
+	message.LocalResetAt = "8:30 PM IST" // fixed when the watcher first froze the message
+	time.Local = time.FixedZone("TestWest", -8*3600)
+	body, _ := resendRequestData(t, Resend{APIKey: "re_fake_test_key"}, message)
+	var payload emailPayload
+	if err := json.Unmarshal(body, &payload); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(payload.Text, "Reset at 8:30 PM IST") || !strings.Contains(payload.HTML, "Reset at 8:30 PM IST") {
+		t.Fatalf("frozen local reset time was not used: %s", payload.Text)
+	}
+}

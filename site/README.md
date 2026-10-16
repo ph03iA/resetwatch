@@ -1,10 +1,10 @@
 # ResetWatch website
 
-The install page is a dependency-free static site in `dist/`. Deploy that directory with a static-file host. Download links point to the GitHub release `v0.1.0`. `python tools/release.py` writes the platform archives, source archive and checksums to `work/dist/`; attach those files to that release.
+The install page is a dependency-free static site in `dist/`. Deploy that directory with a static-file host. There are no downloads: the page shows how to clone the GitHub repository and build with Go.
 
 The page works without JavaScript for Windows installation. JavaScript enables accessible OS tabs and command copying. Fonts and their licenses are bundled locally in `dist/fonts/`; no analytics, remote font services, or third-party scripts are loaded.
 
-Installation examples must stay aligned with the CLI commands and archive layouts. `app.js` centralizes platform-specific commands and filenames. Copying uses the browser clipboard API; when unavailable, the command text is selected and the page explains how to copy it manually.
+Installation examples must stay aligned with the CLI commands. `app.js` centralizes the platform-specific build commands. Copying uses the browser clipboard API; when unavailable, the command text is selected and the page explains how to copy it manually.
 
 The page pairs the hero copy with the original graphite envelope illustration, followed by a continuous process rail, a three-step installation workbook, an operating-notes ledger and a large wordmark footer. The envelope is a decorative SVG hidden from assistive technology. Desktop layouts change to a vertical process timeline and stacked instructions on smaller screens. The page contains no simulated account status, countdown, email mockups or demo controls. Expected and confirmed reset behavior is explained in the operating notes. The default sender is `onboarding@resend.dev`, which only sends to the operator's Resend account email. Sending to other recipients requires a verified domain.
 

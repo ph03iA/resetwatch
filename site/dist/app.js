@@ -1,32 +1,26 @@
 "use strict";
 
-// Archives are attached to the GitHub release, not served with this page.
-const releaseBase = "https://github.com/ph03iA/resetwatch/releases/download/v0.1.0/";
+const clone = "git clone https://github.com/ph03iA/resetwatch.git\ncd resetwatch\n";
+const unixBuild = `${clone}go build -o resetwatch ./cmd/resetwatch\n./resetwatch version`;
 
 const platforms = {
   windows: {
-    download: "resetwatch_0.1.0_windows_amd64.zip",
-    label: "Windows x64",
     shell: "POWERSHELL",
-    help: "In PowerShell, open the folder where you downloaded the archive.",
+    help: "In PowerShell, open the folder that should hold ResetWatch. Requires Git and Go 1.27.2 or newer.",
     executable: ".\\resetwatch.exe",
-    unpack: "Expand-Archive .\\resetwatch_0.1.0_windows_amd64.zip -DestinationPath .\\resetwatch\ncd .\\resetwatch\n.\\resetwatch.exe version",
+    unpack: `${clone}go build -o resetwatch.exe ./cmd/resetwatch\n.\\resetwatch.exe version`,
   },
   macos: {
-    download: "resetwatch_0.1.0_darwin_arm64.tar.gz",
-    label: "macOS Apple silicon",
     shell: "ZSH / BASH",
-    help: "In Terminal, open the folder where you downloaded the archive. This build is for Apple silicon Macs.",
+    help: "In Terminal, open the folder that should hold ResetWatch. Requires Git and Go 1.27.2 or newer.",
     executable: "./resetwatch",
-    unpack: "tar -xzf resetwatch_0.1.0_darwin_arm64.tar.gz\nchmod +x resetwatch\n./resetwatch version",
+    unpack: unixBuild,
   },
   linux: {
-    download: "resetwatch_0.1.0_linux_amd64.tar.gz",
-    label: "Linux x64",
     shell: "BASH",
-    help: "In your terminal, open the folder where you downloaded the archive. This build is for x64 Linux.",
+    help: "In your terminal, open the folder that should hold ResetWatch. Requires Git and Go 1.27.2 or newer.",
     executable: "./resetwatch",
-    unpack: "tar -xzf resetwatch_0.1.0_linux_amd64.tar.gz\nchmod +x resetwatch\n./resetwatch version",
+    unpack: unixBuild,
   },
 };
 
@@ -40,10 +34,7 @@ function updateInstallCommands(platform) {
   document.getElementById("watch-command").textContent = `${notify}\n${platform.executable} watch`;
 }
 
-function updateDownload(platform) {
-  const download = document.getElementById("platform-download");
-  download.href = releaseBase + platform.download;
-  download.firstChild.textContent = `${platform.label} `;
+function updatePlatformText(platform) {
   document.getElementById("shell-label").textContent = platform.shell;
   document.getElementById("unpack-help").textContent = platform.help;
 }
@@ -56,7 +47,7 @@ function selectPlatform(tab) {
     item.tabIndex = selected ? 0 : -1;
   });
   document.getElementById("installation-panel").setAttribute("aria-labelledby", tab.id);
-  updateDownload(platform);
+  updatePlatformText(platform);
   updateInstallCommands(platform);
   status.textContent = "";
 }

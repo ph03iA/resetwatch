@@ -28,5 +28,3 @@ jobs:
         run: go run golang.org/x/vuln/cmd/govulncheck@v1.9.0 ./...
       - name: Check website JavaScript
         run: node --check site/dist/app.js
-      - name: Keep environment files out of releases
-        run: python3 tools/test_release.py

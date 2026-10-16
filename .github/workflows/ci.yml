@@ -25,7 +25,7 @@ jobs:
       - name: Enforce complexity ceiling
         run: go run github.com/fzipp/gocyclo/cmd/gocyclo@v0.6.0 -over 10 cmd internal
       - name: Check known Go vulnerabilities
-        run: go run golang.org/x/vuln/cmd/govulncheck@v1.1.4 ./...
+        run: go run golang.org/x/vuln/cmd/govulncheck@v1.9.0 ./...
       - name: Check website JavaScript
         run: node --check site/dist/app.js
       - name: Keep environment files out of releases

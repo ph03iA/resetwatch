@@ -38,7 +38,12 @@ func (e *Engine) Step(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	snapshot, observationErr := e.Observe(ctx, config)
+	// A nil Provider means nothing to poll (Claude readings arrive from its status line instead).
+	var snapshot *quota.Snapshot
+	var observationErr error
+	if e.Provider != nil {
+		snapshot, observationErr = e.Observe(ctx, config)
+	}
 	if observationErr != nil {
 		e.log("Quota refresh unavailable; due emails will describe expected resets only.")
 	}
@@ -92,7 +97,7 @@ func (e *Engine) deliver(ctx context.Context, alert store.Alert, snapshot *quota
 }
 
 func (e *Engine) sendAlert(ctx context.Context, alert store.Alert, snapshot *quota.Snapshot) error {
-	message, err := e.DB.FreezeMessage(ctx, alert, compose(alert, snapshot, e.clock()))
+	message, err := e.DB.FreezeMessage(ctx, alert, compose(alert, e.alertSnapshot(ctx, alert, snapshot), e.clock()))
 	if err != nil {
 		return err
 	}
@@ -105,6 +110,19 @@ func (e *Engine) sendAlert(ctx context.Context, alert store.Alert, snapshot *quo
 	}
 	e.log("Reset email accepted by email provider: " + alert.ID[:12])
 	return nil
+}
+
+// alertSnapshot prefers this cycle's reading of the alert's provider and otherwise the last saved one;
+// compose still only confirms a reset from data observed after it and within two minutes.
+func (e *Engine) alertSnapshot(ctx context.Context, alert store.Alert, current *quota.Snapshot) *quota.Snapshot {
+	if current != nil && current.Provider == alert.Provider {
+		return current
+	}
+	saved, err := e.DB.Snapshot(ctx, alert.Provider)
+	if err != nil {
+		return nil
+	}
+	return &saved
 }
 
 func (e *Engine) cancelReason(ctx context.Context, alert store.Alert, config store.Config) string {

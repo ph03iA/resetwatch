@@ -11,6 +11,7 @@ import (
 
 	"resetwatch/internal/notify"
 	"resetwatch/internal/quota"
+	"resetwatch/internal/store"
 	"resetwatch/internal/watch"
 )
 
@@ -190,10 +191,18 @@ func (a *application) watch(ctx context.Context, args []string) error {
 	if err != nil {
 		return err
 	}
-	engine := watch.Engine{DB: a.db, Provider: quota.Codex{Binary: config.CodexBin, Timeout: 15 * time.Second, Version: version},
+	engine := watch.Engine{DB: a.db, Provider: a.codexProvider(ctx, config),
 		Sender: notify.Resend{APIKey: key}, Log: func(message string) { fmt.Fprintln(a.errOut, time.Now().Format(time.RFC3339), message) }}
-	fmt.Fprintln(a.errOut, "Watching Codex reset windows. Ctrl+C stops safely.")
+	fmt.Fprintln(a.errOut, "Watching reset windows. Ctrl+C stops safely.")
 	return engine.Run(ctx, *interval, *once)
+}
+
+// codexProvider polls Codex only once it has been connected, so a Claude-only setup does not log a failure every cycle.
+func (a *application) codexProvider(ctx context.Context, config store.Config) quota.Provider {
+	if _, err := a.db.Snapshot(ctx, "codex"); err != nil {
+		return nil
+	}
+	return quota.Codex{Binary: config.CodexBin, Timeout: 15 * time.Second, Version: version}
 }
 
 func writeJSON(out interface{ Write([]byte) (int, error) }, value any) error {

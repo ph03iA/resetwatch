@@ -1,6 +1,6 @@
 # ResetWatch
 
-A local CLI that emails you when an exhausted Codex usage window reaches its reset time. Written in Go, with durable SQLite alerts and delivery through your Resend account.
+A local CLI that emails you when an exhausted Codex or Claude usage window reaches its reset time. Written in Go, with durable SQLite alerts and delivery through your Resend account.
 
 **Status:** v0.1.0 is a locally tested release candidate. The email integration is tested with simulated HTTP responses, and a live reset email has been delivered end to end through Resend's test sender. There are no prebuilt binaries; build from source. This project does not operate a hosted watcher.
 
@@ -82,6 +82,26 @@ The file is loaded when a command starts. Restart a running watcher after changi
 
 To check email delivery immediately with a binary on your `PATH`, run `resetwatch test-email --email 'YOUR_RESEND_ACCOUNT_EMAIL'` from the folder containing `.env`. No quota exhaustion is needed. To use your own verified domain, add `--from 'ResetWatch <alerts@yourdomain.com>'`.
 
+## Claude (Pro and Max)
+
+Claude Code reports your 5-hour and weekly plan usage to its [status line](https://code.claude.com/docs/en/statusline) command. ResetWatch reads only that documented data; it never reads Claude credentials and makes no requests to Claude. Add this to `~/.claude/settings.json`, using the full path to your built binary:
+
+```json
+{
+  "statusLine": { "type": "command", "command": "/full/path/to/resetwatch claude-statusline" }
+}
+```
+
+On Windows, use the `.exe` path with forward slashes, for example `C:/Users/you/resetwatch/resetwatch.exe claude-statusline`. The status line then shows `Claude 5h 23% · 7d 41%`, and an exhausted window schedules a reminder. Run `resetwatch notify` and `resetwatch watch` as for Codex; the watcher sends Claude reminders even if Codex is not connected.
+
+Limits of this approach:
+
+- Readings arrive only while Claude Code is open and after its first response in a session. ResetWatch schedules a reminder only if a reading shows a window at 100%.
+- This replaces any status line you already use.
+- The reset email says the limit **is back** only if Claude Code reported fresh data within two minutes after the reset; otherwise it says it **should be back**.
+- The status line data has no account identity, so switching Claude accounts is not detected.
+- API-key and Bedrock/Vertex sessions report no plan limits; the status line stays empty.
+
 ## Commands
 
 | Command | Behavior |
@@ -92,6 +112,7 @@ To check email delivery immediately with a binary on your `PATH`, run `resetwatc
 | `resetwatch watch [--interval 1m] [--once]` | Refresh quotas and deliver due alerts. Interval must be 15 seconds to 1 hour. |
 | `resetwatch status [--refresh] [--json]` | Show the saved observation; `--refresh` requests current data first. |
 | `resetwatch history [--limit 20] [--json]` | Show alert states and delivery attempts. Limit: 1–1000. |
+| `resetwatch claude-statusline` | Claude Code status line command: record plan usage from stdin and print a short summary. |
 | `resetwatch retry --id FULL_ALERT_ID` | Requeue an eligible failed alert, keeping the same delivery key and frozen message. |
 | `resetwatch demo` | Display labeled sample data without opening accounts or sending email. |
 | `resetwatch version` | Print the version. |
@@ -159,7 +180,7 @@ This does not configure systemd automatically. A user service normally requires 
 
 ## Boundaries
 
-Only Codex is supported in this release. One connected account and one email configuration are stored per state directory. The account key hashes the normalized email address returned by Codex, so same-email workspace/account-context switches cannot be reliably distinguished. Use separate state directories and matching Codex contexts when isolation is needed; verify quota after switching. Do not assume cross-workspace identity isolation.
+Codex and Claude (Pro/Max, through the Claude Code status line) are supported in this release. One connected account and one email configuration are stored per state directory. The account key hashes the normalized email address returned by Codex, so same-email workspace/account-context switches cannot be reliably distinguished. Use separate state directories and matching Codex contexts when isolation is needed; verify quota after switching. Do not assume cross-workspace identity isolation.
 
 The Codex protocol and account eligibility can change. Missing or malformed quota data is an error, never zero usage. This tool cannot bypass limits, recover an expired sign-in, wake your laptop, or promise mail delivery. For production rollout, validate your actual Codex installation, sender domain, and inbox before relying on alerts.
 

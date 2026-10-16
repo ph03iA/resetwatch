@@ -2,6 +2,7 @@
 
 ## Unreleased — 2026-10-16
 
+- Claude support: `resetwatch claude-statusline` reads Claude Code's documented status line rate limits (5-hour and weekly) and schedules reset reminders. The watcher skips Codex polling until Codex is connected and uses saved readings for Claude alerts.
 - Friendlier reset email: subjects like "Your Codex 5-hour limit is back. Get back to work", the window named by length (5-hour, weekly), local reset time with exact UTC kept, and a styled HTML card. Unconfirmed resets still say "should be back".
 - Name the npm `codex.exe` location in the Windows not-found error and README.
 - Set the version once: release builds stamp `main.version`, which is also reported to Codex.

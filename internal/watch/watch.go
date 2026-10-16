@@ -56,14 +56,7 @@ func (e *Engine) Observe(ctx context.Context, config store.Config) (*quota.Snaps
 	if err != nil {
 		return nil, err
 	}
-	if err := e.DB.SaveSnapshot(ctx, snapshot); err != nil {
-		return nil, err
-	}
-	config, err = e.DB.Config(ctx)
-	if err != nil {
-		return nil, err
-	}
-	if err := e.DB.Schedule(ctx, snapshot, config, e.clock()); err != nil {
+	if err := e.DB.RecordSnapshot(ctx, snapshot, e.clock()); err != nil {
 		return nil, err
 	}
 	return &snapshot, nil
@@ -100,6 +93,9 @@ func (e *Engine) sendAlert(ctx context.Context, alert store.Alert, snapshot *quo
 	message, err := e.DB.FreezeMessage(ctx, alert, compose(alert, e.alertSnapshot(ctx, alert, snapshot), e.clock()))
 	if err != nil {
 		return err
+	}
+	if message.Provider == "claude" && message.Confirmed {
+		return e.DB.Finish(ctx, alert, "cancelled", "stored Claude confirmation cannot be safely retried; inspect the previous delivery", e.clock(), e.clock())
 	}
 	err = e.Sender.Send(ctx, message)
 	if err != nil {
@@ -182,6 +178,9 @@ func freshForAlert(snapshot *quota.Snapshot, alert store.Alert, now time.Time) b
 	if snapshot == nil {
 		return false
 	}
+	if !confirmedUsageAllowed(snapshot) {
+		return false
+	}
 	if snapshot.AccountID != alert.AccountID || snapshot.Provider != alert.Provider {
 		return false
 	}
@@ -189,6 +188,16 @@ func freshForAlert(snapshot *quota.Snapshot, alert store.Alert, now time.Time) b
 		return false
 	}
 	return now.Sub(snapshot.ObservedAt) <= 2*time.Minute
+}
+
+func confirmedUsageAllowed(snapshot *quota.Snapshot) bool {
+	if snapshot.Provider == "claude" {
+		return false // callback time is not a provider measurement time
+	}
+	if snapshot.Provider == "codex" {
+		return snapshot.OrdinaryUsageAllowed != nil && *snapshot.OrdinaryUsageAllowed
+	}
+	return false
 }
 
 func (e *Engine) recordFailure(ctx context.Context, alert store.Alert, sendErr error) error {

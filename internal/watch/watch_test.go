@@ -273,8 +273,10 @@ func composeAlert(reset time.Time) store.Alert {
 }
 
 func watchSnapshot(observed, reset time.Time, used float64) quota.Snapshot {
+	allowed := true
 	return quota.Snapshot{Provider: "codex", AccountID: "account-hash", ObservedAt: observed,
-		Windows: []quota.Window{{ID: "codex:primary", UsedPercent: used, Duration: 5 * time.Hour, ResetsAt: reset}}}
+		OrdinaryUsageAllowed: &allowed,
+		Windows:              []quota.Window{{ID: "codex:primary", UsedPercent: used, Duration: 5 * time.Hour, ResetsAt: reset}}}
 }
 
 func watchTime() time.Time { return time.Date(2030, 1, 2, 10, 0, 0, 0, time.UTC) }
@@ -359,8 +361,8 @@ func TestStepWithoutPollingSendsClaudeResetFromSavedReadings(t *testing.T) {
 		if len(sender.messages) != 1 || sender.messages[0].Provider != "claude" || sender.messages[0].Duration != 5*time.Hour {
 			t.Fatalf("fresh=%v: Claude reset was not emailed with its window length: %#v", fresh, sender.messages)
 		}
-		if sender.messages[0].Confirmed != fresh {
-			t.Fatalf("fresh=%v: confirmed = %v; only a reading after the reset may confirm it", fresh, sender.messages[0].Confirmed)
+		if sender.messages[0].Confirmed {
+			t.Fatalf("fresh=%v: status-line callbacks must never confirm Claude allowance", fresh)
 		}
 	}
 }

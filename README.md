@@ -28,6 +28,8 @@ go build ./cmd/resetwatch
 .\resetwatch.exe version
 ```
 
+If you run `.\bin\resetwatch.exe`, build that file explicitly with `go build -o .\bin\resetwatch.exe ./cmd/resetwatch`. A build without `-o` updates only the executable in the project root.
+
 The examples below use `./resetwatch`; on Windows, write `.\resetwatch.exe` instead and use double quotes around values that contain `<` or spaces.
 
 To use `resetwatch` from any directory, run `go install ./cmd/resetwatch` instead. Go installs to `GOBIN`, or to `GOPATH/bin` when `GOBIN` is unset; add that directory to your `PATH` if needed. The module path is local (`resetwatch`), so `go install github.com/...@latest` does not work.
@@ -51,11 +53,15 @@ After building, run the wizard from the folder where you will keep the local `.e
 
 On Windows, use `.\resetwatch.exe setup` and `.\resetwatch.exe watch`.
 
+Prompts show no bracketed email or choice suggestions. Pressing Enter still keeps the saved value or default choice.
+
 Setup asks whether to watch **Codex**, **Claude**, or **both**, then asks for your reminder email and sender. It reuses an existing key from the environment or current folder's `.env`; otherwise it asks for the key without displaying it and saves it to `.env`. The default sender is `ResetWatch <onboarding@resend.dev>`, which only reaches your Resend account email. Other recipients require a verified sender domain.
 
 For Codex, setup checks the native executable and subscription sign-in without inference. Windows npm installations are discovered automatically; use `--codex-bin` for a custom location. Missing sign-in is fixed with `codex login` in another terminal, then Retry. Setup can explicitly skip an unavailable provider and finish with the working one; skipping both leaves the prior setup active.
 
 For Claude, setup installs a user-level status line using the absolute ResetWatch executable and state directory. It asks before replacing another display and keeps a private recovery record of the original entry. Claude remains **awaiting first reading** until Claude Code supplies plan usage. User settings use `CLAUDE_CONFIG_DIR` when configured, otherwise `~/.claude/settings.json`; project or managed settings may override them. Setup does not read Claude credentials or run Claude for you.
+
+Senders may be a bare email address or `Name <email@example.com>`. New tests and reminders normalize an unnamed `<email@example.com>` to the bare address accepted by Resend. Older frozen retries retain their exact request format; if a previously frozen unnamed sender fails with HTTP 422, rerun `setup --from 'ResetWatch <onboarding@resend.dev>'` (or your verified named sender) instead of retrying that old message. The API key is reused.
 
 Setup offers one optional test email, defaulting to No. An accepted test is not proof of inbox placement. Failed tests retain the setup, allowing a later `resetwatch test-email`. The watcher starts only when you run it separately.
 
@@ -111,7 +117,7 @@ resetwatch watch
 
 Both `watch` and `test-email` load this key automatically. A nonempty `RESEND_API_KEY` already set in the process environment takes priority, and the file is not read in that case. Only `.env` in the current working directory is searched; the binary's folder, parent directories and state directory are not searched. Only `RESEND_API_KEY` is read. Plain values and matching single/double quotes are supported, along with blank lines, UTF-8 BOM, CRLF and comments. An unquoted `#` starts a comment; a quoted `#` remains literal. This is a key file rather than a shell script: use `RESEND_API_KEY=...` without `export`. Escape sequences, variable expansion and multiline values are not supported, and no shell commands run. Duplicate key assignments, malformed values, non-regular files and files over 64 KiB are rejected without exposing their contents.
 
-The `.env` file contains a plaintext secret. Keep it private, restrict it to your user (`chmod 600 .env` on Unix), and do not commit or share it. Git and release packaging exclude real environment files; `.env.example` contains no key. File-loaded values are not exported to the process environment or the Codex subprocess. The key is not stored in SQLite. Process environment variables remain supported for services and secret managers. Keep the watcher running on an awake, online computer. `Ctrl+C` stops it safely; saved alerts resume on the next run.
+The `.env` file contains a plaintext secret. Keep it private, restrict it to your user (`chmod 600 .env` on Unix), and do not commit or share it. Git excludes real environment files; `.env.example` contains no key. File-loaded values are not exported to the process environment or the Codex subprocess. The key is not stored in SQLite. Process environment variables remain supported for services and secret managers. Keep the watcher running on an awake, online computer. `Ctrl+C` stops it safely; saved alerts resume on the next run.
 
 The file is loaded when a command starts. Restart a running watcher after changing its key.
 

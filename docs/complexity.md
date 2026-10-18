@@ -496,3 +496,25 @@ Extracted: status argument parsing, provider resolution, snapshot collection and
 During implementation, `status` measured 12 and `statusAll` 13 before extracting their separate jobs; their final scores are listed above. `setupPrompter.choose` measured 11 before extracting choice validation and finishes at 9. The interrupted-launcher recovery fix splits journal validation and ownership without hiding decisions.
 
 Behavior verified: baseline and combined race suites, independent subsystem tests, real Windows CLI and hidden-input/Ctrl-C smoke checks, synthetic installer recovery including locked Windows replacement, provider cancellation/claim races, immutable retry payloads, legacy JSON compatibility and actual browser checks. See validation.md for limits and delivery state.
+
+
+## Sender-format correction - 2026-10-19
+
+| Function | Before | After |
+|----------|--------|-------|
+| watch.compose | 7 | 7 |
+| notify.(Resend).request | 4 | 6 |
+| main.(*application).testEmail | 5 | 5 |
+| notify.statusError | 4 | 5 |
+
+New tests and reminders record the corrected sender-format choice in the frozen message. An absent flag preserves old retry bodies and delivery keys; named senders keep their existing wire format. HTTP 422 includes static guidance without exposing a provider response. No helpers were extracted or public signatures changed.
+
+Behavior verified: the sender regression failed for bare and angle-only addresses against isolated pre-fix commit `0f847ba`, then passed in the full race suite with the fix. Tests compare actual request JSON, serialized retry bodies and keys, and legacy/new format preservation after SQLite reopen. Vet and the repository complexity ceiling passed. Both Windows executable copies were rebuilt and their version commands ran. No live email was sent.
+
+## Remove inline prompt suggestions - 2026-10-19
+
+| Function | Before | After |
+|----------|--------|-------|
+| main.(setupPrompter).ask | 5 | 4 |
+
+Removed only the bracketed default display from the shared prompt writer. Email, sender, numeric choices and confirmations retain their input handling, including blank-input defaults and cancellation. No helpers were extracted. CLI race tests and vet passed; the prompt regression checks that the saved email, `[3]` and `[n]` are absent from the output.

@@ -68,6 +68,9 @@ func validateAPIKey(key string) error {
 func (r Resend) request(ctx context.Context, m Message) (*http.Request, error) {
 	to, _ := mailbox(m.To, false)
 	from, _ := mailbox(m.From, true)
+	if m.CanonicalSender && strings.HasPrefix(from, "<") {
+		from = strings.TrimSuffix(strings.TrimPrefix(from, "<"), ">")
+	}
 	subject, text, markup := messageContent(m)
 	body, err := json.Marshal(emailPayload{From: from, To: []string{to}, Subject: subject, Text: text, HTML: markup})
 	if err != nil {
@@ -140,8 +143,12 @@ func statusError(response *http.Response) error {
 	if code == http.StatusConflict {
 		retryable = concurrentIdempotentRequest(response.Body)
 	}
+	message := fmt.Sprintf("email service returned HTTP %d", code)
+	if code == http.StatusUnprocessableEntity {
+		message += ": email fields were rejected; check the sender and recipient settings before retrying"
+	}
 	return &deliveryError{
-		message:    fmt.Sprintf("email service returned HTTP %d", code),
+		message:    message,
 		retryable:  retryable,
 		retryAfter: parseRetryAfter(response.Header.Get("Retry-After"), time.Now()),
 	}

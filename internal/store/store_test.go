@@ -237,31 +237,36 @@ func TestLeaseRecoversAndRejectsStaleCompletion(t *testing.T) {
 }
 
 func TestFreezeMessagePreservesExactRetryPayloadAcrossReopen(t *testing.T) {
-	ctx := context.Background()
-	dir := t.TempDir()
-	db := openTestDB(t, dir)
-	now := storeTime()
-	due := now.Add(time.Hour)
-	must(t, db.Schedule(ctx, testSnapshot(now, due, 100), testConfig(), now))
-	alert, err := db.Claim(ctx, due)
-	must(t, err)
-	initial := notify.Message{Key: alert.ID, To: alert.To, From: alert.From, Provider: alert.Provider,
-		Window: alert.Window, ResetAt: alert.ResetAt, OtherLimit: true, LocalResetAt: "2030-01-02 4:30 PM IST"}
-	frozen, err := db.FreezeMessage(ctx, alert, initial)
-	must(t, err)
-	firstPayload := storedPayload(t, db, alert.ID)
-	must(t, db.Finish(ctx, alert, "retry", "temporary", due.Add(time.Minute), due))
-	must(t, db.Close())
-	db = openTestDB(t, dir)
-	alert, err = db.Claim(ctx, due.Add(time.Minute))
-	must(t, err)
-	changed := initial
-	changed.Confirmed, changed.OtherLimit = true, false
-	changed.LocalResetAt = "2030-01-02 11:00 AM UTC"
-	retried, err := db.FreezeMessage(ctx, alert, changed)
-	must(t, err)
-	if !reflect.DeepEqual(frozen, retried) || firstPayload != storedPayload(t, db, alert.ID) {
-		t.Fatal("retry changed the persisted email body while reusing its idempotency key")
+	for name, canonical := range map[string]bool{"legacy sender": false, "canonical sender": true} {
+		t.Run(name, func(t *testing.T) {
+			ctx := context.Background()
+			dir := t.TempDir()
+			db := openTestDB(t, dir)
+			now := storeTime()
+			due := now.Add(time.Hour)
+			must(t, db.Schedule(ctx, testSnapshot(now, due, 100), testConfig(), now))
+			alert, err := db.Claim(ctx, due)
+			must(t, err)
+			initial := notify.Message{CanonicalSender: canonical, Key: alert.ID, To: alert.To, From: alert.From, Provider: alert.Provider,
+				Window: alert.Window, ResetAt: alert.ResetAt, OtherLimit: true, LocalResetAt: "2030-01-02 4:30 PM IST"}
+			frozen, err := db.FreezeMessage(ctx, alert, initial)
+			must(t, err)
+			firstPayload := storedPayload(t, db, alert.ID)
+			must(t, db.Finish(ctx, alert, "retry", "temporary", due.Add(time.Minute), due))
+			must(t, db.Close())
+			db = openTestDB(t, dir)
+			alert, err = db.Claim(ctx, due.Add(time.Minute))
+			must(t, err)
+			changed := initial
+			changed.Confirmed, changed.OtherLimit = true, false
+			changed.LocalResetAt = "2030-01-02 11:00 AM UTC"
+			changed.CanonicalSender = !canonical
+			retried, err := db.FreezeMessage(ctx, alert, changed)
+			must(t, err)
+			if !reflect.DeepEqual(frozen, retried) || firstPayload != storedPayload(t, db, alert.ID) {
+				t.Fatal("retry changed the persisted email body while reusing its idempotency key")
+			}
+		})
 	}
 }
 

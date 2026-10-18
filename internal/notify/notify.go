@@ -26,6 +26,8 @@ type Message struct {
 	Confirmed    bool
 	OtherLimit   bool
 	Test         bool
+	// CanonicalSender uses Resend sender syntax; absent in older frozen messages to preserve their retries.
+	CanonicalSender bool `json:",omitempty"`
 }
 
 type Sender interface {

@@ -21,7 +21,7 @@ func (a *application) testEmail(ctx context.Context, args []string) error {
 	if sender == nil {
 		sender = notify.Resend{APIKey: key}
 	}
-	message := notify.Message{Key: "test-" + rand.Text(), To: to, From: from, Test: true}
+	message := notify.Message{Key: "test-" + rand.Text(), To: to, From: from, Test: true, CanonicalSender: true}
 	if err := sender.Send(ctx, message); err != nil {
 		return fmt.Errorf("test email: %w", err)
 	}

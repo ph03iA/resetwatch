@@ -21,9 +21,6 @@ type setupPrompter struct {
 }
 
 func (p setupPrompter) ask(prompt, defaultValue string) (string, error) {
-	if defaultValue != "" {
-		prompt += " [" + defaultValue + "]"
-	}
 	if _, err := fmt.Fprint(p.out, prompt+": "); err != nil {
 		return "", errors.New("could not write setup prompt")
 	}

@@ -25,8 +25,13 @@ func TestSetupPromptsDefaultsAndReprompt(t *testing.T) {
 	if err != nil || index != 1 {
 		t.Fatalf("selection did not reprompt: index=%d err=%v", index, err)
 	}
-	if !strings.Contains(output.String(), "Choose 1-3 [3]") {
-		t.Fatal("choice did not show one-based default")
+	if !strings.Contains(output.String(), "Choose 1-3: ") {
+		t.Fatal("choice prompt is missing")
+	}
+	for _, suggestion := range []string{"fixture@example.test", "[3]", "[n]"} {
+		if strings.Contains(output.String(), suggestion) {
+			t.Fatalf("prompt exposed a suggested value: %q", suggestion)
+		}
 	}
 }
 

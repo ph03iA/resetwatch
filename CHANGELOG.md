@@ -2,6 +2,8 @@
 
 ## Unreleased — 2026-10-16
 
+- Find npm-installed Codex on Windows from 32-bit ResetWatch builds too, and keep Claude's `settings.json` indented when setup installs or restores the status line.
+
 - Add guided `resetwatch setup`: choose Codex, Claude or both; configure email and a hidden local key; safely install and restore Claude status lines; optionally send a test. Provider selection applies live, disables unsent reminders and preserves delivery safety. Add combined status output and Windows npm executable discovery.
 
 - New reset emails show the Indian Standard Time date and time (IST, UTC+05:30) alongside exact UTC. Existing frozen retries keep their original display text.

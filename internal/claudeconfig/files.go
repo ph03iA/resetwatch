@@ -61,7 +61,8 @@ func writeDocument(ctx context.Context, path string, doc document) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	data, err := json.Marshal(doc.fields)
+	// People edit this file by hand, so keep it indented rather than minified.
+	data, err := json.MarshalIndent(doc.fields, "", "  ")
 	if err != nil || len(data)+1 > maxSettings {
 		return errors.New("updated Claude settings exceed the supported JSON size")
 	}

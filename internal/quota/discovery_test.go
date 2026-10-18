@@ -23,10 +23,11 @@ func TestNpmCodexDiscovery(t *testing.T) {
 	if err := os.Link(binary, path); err != nil {
 		t.Fatal(err)
 	}
-	found, err := npmCodexBinary(root, "amd64")
+	found, err := npmCodexBinary(root)
 	if err != nil || found != path {
 		t.Fatalf("npm discovery = %q, %v; want %q", found, err, path)
 	}
+	// Automatic discovery must find the x64 package whatever this test binary's architecture is (386 included).
 	t.Setenv("PATH", t.TempDir())
 	t.Setenv("APPDATA", root)
 	found, err = DiscoverBinary()
@@ -37,11 +38,8 @@ func TestNpmCodexDiscovery(t *testing.T) {
 
 func TestNpmCodexDiscoveryRejectsMissingAndRelativeRoots(t *testing.T) {
 	for _, root := range []string{"", "relative", t.TempDir()} {
-		if _, err := npmCodexBinary(root, "amd64"); err == nil {
+		if _, err := npmCodexBinary(root); err == nil {
 			t.Fatalf("unexpected binary in %q", root)
 		}
-	}
-	if _, err := npmCodexBinary(t.TempDir(), "386"); err == nil {
-		t.Fatal("unsupported architecture accepted")
 	}
 }

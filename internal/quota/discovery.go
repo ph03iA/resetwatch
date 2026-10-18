@@ -17,31 +17,36 @@ func DiscoverBinary() (string, error) {
 	return filepath.Abs(path)
 }
 
-func npmCodexBinary(root, arch string) (string, error) {
+// npmCodexBinary checks every Windows package npm may have installed: a 32-bit ResetWatch
+// build can still run the machine's 64-bit Codex, so the build architecture is not a guide.
+func npmCodexBinary(root string) (string, error) {
 	if !filepath.IsAbs(root) {
 		return "", errors.New("Windows APPDATA directory is unavailable; use --codex-bin")
 	}
-	targets := map[string][2]string{
-		"amd64": {"codex-win32-x64", "x86_64-pc-windows-msvc"},
-		"arm64": {"codex-win32-arm64", "aarch64-pc-windows-msvc"},
-	}
-	target, ok := targets[arch]
-	if !ok {
-		return "", errors.New("unsupported Windows Codex architecture; use --codex-bin")
-	}
 	packageRoot := filepath.Join(root, "npm", "node_modules", "@openai", "codex")
-	for _, vendor := range []string{
-		filepath.Join(packageRoot, "node_modules", "@openai", target[0], "vendor", target[1]),
-		filepath.Join(packageRoot, "vendor", target[1]),
+	for _, target := range [][2]string{
+		{"codex-win32-x64", "x86_64-pc-windows-msvc"},
+		{"codex-win32-arm64", "aarch64-pc-windows-msvc"},
 	} {
-		for _, subdir := range []string{"codex", "bin"} {
-			candidate := filepath.Join(vendor, subdir, "codex.exe")
-			if path, err := exec.LookPath(candidate); err == nil {
-				return path, nil
-			}
+		if path, ok := npmVendorBinary(packageRoot, target[0], target[1]); ok {
+			return path, nil
 		}
 	}
 	return "", errors.New("Codex native executable not found in the Windows npm installation; install Codex or use --codex-bin")
+}
+
+func npmVendorBinary(packageRoot, packageName, triple string) (string, bool) {
+	for _, vendor := range []string{
+		filepath.Join(packageRoot, "node_modules", "@openai", packageName, "vendor", triple),
+		filepath.Join(packageRoot, "vendor", triple),
+	} {
+		for _, subdir := range []string{"codex", "bin"} {
+			if path, err := exec.LookPath(filepath.Join(vendor, subdir, "codex.exe")); err == nil {
+				return path, true
+			}
+		}
+	}
+	return "", false
 }
 
 func defaultCodexBinary() (string, error) {
@@ -54,7 +59,7 @@ func defaultCodexBinary() (string, error) {
 		return nativeBinary(path)
 	}
 	if runtime.GOOS == "windows" {
-		return npmCodexBinary(os.Getenv("APPDATA"), runtime.GOARCH)
+		return npmCodexBinary(os.Getenv("APPDATA"))
 	}
 	return "", errors.New("Codex native executable not found; install Codex or use --codex-bin")
 }

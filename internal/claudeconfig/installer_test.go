@@ -252,3 +252,18 @@ func assertField(t *testing.T, doc document, name, value string) {
 		t.Fatalf("field %s did not retain its expected value", name)
 	}
 }
+
+func TestInstallAndRestoreKeepSettingsReadable(t *testing.T) {
+	i := testInstaller(t)
+	putSettings(t, i, "{\n  \"theme\": \"dark\",\n  \"permissions\": {\"allow\": [\"Read(foo)\"]}\n}\n")
+	for _, step := range []func(*testing.T, Installer){func(t *testing.T, i Installer) { mustInstall(t, i, false) }, mustRestore} {
+		step(t, i)
+		data, err := os.ReadFile(i.settingsPath())
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !strings.Contains(string(data), "\n  \"theme\": \"dark\"") || !strings.Contains(string(data), "\n    \"allow\": [") {
+			t.Fatalf("settings were not written indented:\n%s", data)
+		}
+	}
+}

@@ -534,3 +534,34 @@ Claude readings now come from Claude Code's experimental `get_usage` control req
 | main.(*application).installSetupClaude | 5 | Removed |
 
 Behavior verified: full suite and `go test -race` (64-bit build) pass; `gocyclo -over 10 cmd internal` passes. A built binary ran `connect claude` and `status --provider claude --refresh` against a real Claude Code 2.1.301 Pro sign-in (no prompt, throwaway state); tests use a fake Claude Code process and never reach a real account.
+
+## Remove extra commands — 2026-10-20
+
+`connect`, `notify`, `retry` and `demo` were removed; `setup` covers them. `configureNotifications` became `saveSetup` once its email-only caller was gone.
+
+| Function | Before | After |
+| --- | ---: | ---: |
+| main.(*application).statusSnapshot | 7 | 7 |
+| store.(*DB).configureNotifications → saveSetup | 7 | 5 |
+| main.(*application).watch | 6 | 6 |
+| store.(*DB).ConfigureSetup | 4 | 5 |
+| main.(*application).run | 4 | 4 |
+| main.(*application).stateCommand | 4 | 4 |
+| main.(*application).render | 3 | 2 |
+| store.rejectActiveDelivery | 3 | 3 |
+| main.(*application).help | 2 | 2 |
+| main.(*application).connect | 6 | Removed |
+| main.(*application).retry | 6 | Removed |
+| main.(*application).configure | 5 | Removed |
+| main.(*application).connectFlags | 5 | Removed |
+| store.(*DB).EnableProvider | 5 | Removed |
+| main.(*application).connectClaude | 4 | Removed |
+| store.(*DB).Retry | 4 | Removed |
+| store.retrySelected | 4 | Removed |
+| store.(*DB).SaveCodexBinary | 4 | Removed |
+| main.(*application).connectCodex | 2 | Removed |
+| main.(*application).demo | 2 | Removed |
+| store.(Config).withProvider | 2 | Removed |
+| store.(*DB).ConfigureNotifications | 1 | Removed |
+
+Behavior verified: full suite and `go test -race` (64-bit build) pass; `gocyclo -over 10 cmd internal` passes. Tests that changed email settings through `notify` now save them through `ConfigureSetup`, as setup does; header-injection rejection is still tested.

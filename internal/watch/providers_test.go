@@ -31,7 +31,8 @@ func TestStepReloadsSelectedProviderAndExecutableEveryCycle(t *testing.T) {
 	config.Providers = "claude"
 	must(t, engine.DB.ConfigureSetup(ctx, config, *now))
 	must(t, engine.Step(ctx))
-	must(t, engine.DB.SaveCodexBinary(ctx, "second-binary"))
+	config.Providers, config.CodexBin = "both", "second-binary"
+	must(t, engine.DB.ConfigureSetup(ctx, config, *now))
 	must(t, engine.Step(ctx))
 	if !reflect.DeepEqual(binaries, []string{"first-binary", "second-binary"}) {
 		t.Fatalf("watcher retained its startup selection/path: %v", binaries)

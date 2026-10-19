@@ -22,9 +22,8 @@ func testApplication(t *testing.T) (*application, *bytes.Buffer) {
 
 func TestOfflineCommands(t *testing.T) {
 	cases := []struct{ command, want string }{
-		{"help", "resetwatch connect codex"},
+		{"help", "resetwatch setup"},
 		{"version", "0.1.0"},
-		{"demo", "DEMO DATA"},
 		{"history", "No alerts yet"},
 		{"history --json", "[]"},
 	}
@@ -43,12 +42,10 @@ func TestOfflineCommands(t *testing.T) {
 
 func TestCLIRejectsInvalidInput(t *testing.T) {
 	cases := [][]string{
-		{"missing"}, {"version", "extra"}, {"demo", "extra"},
-		{"connect", "unsupported"}, {"status"}, {"status", "extra"},
-		{"notify", "--email", "bad", "--from", "bad"},
-		{"notify", "--email", "a@example.com\r\nBcc: victim@example.com", "--from", "b@example.com"},
+		{"missing"}, {"version", "extra"}, {"status"}, {"status", "extra"},
 		{"history", "--limit", "0"}, {"history", "--limit", "1001"},
-		{"history", "extra"}, {"watch"}, {"retry", "--id", "x"},
+		{"history", "extra"}, {"watch"},
+		{"connect", "codex"}, {"notify"}, {"retry"}, {"demo"}, // removed commands
 	}
 	for _, args := range cases {
 		t.Run(strings.Join(args, " "), func(t *testing.T) {
@@ -60,13 +57,19 @@ func TestCLIRejectsInvalidInput(t *testing.T) {
 	}
 }
 
-func TestConfigurePersistsWithoutSending(t *testing.T) {
+func TestEmailSettingsRejectBadAddresses(t *testing.T) {
+	app, _ := testApplication(t)
+	for _, to := range []string{"bad", "a@example.com\r\nBcc: victim@example.com"} {
+		if err := setEmail(app, to); err == nil {
+			t.Errorf("email %q was accepted", to)
+		}
+	}
+}
+
+func TestWatchNeedsResendKey(t *testing.T) {
 	t.Chdir(t.TempDir())
 	app, output := testApplication(t)
-	args := []string{"notify", "--email", "recipient@example.com", "--from", "ResetWatch <alerts@example.com>"}
-	if err := app.run(context.Background(), args); err != nil {
-		t.Fatal(err)
-	}
+	saveEmail(t, app, "recipient@example.com")
 	output.Reset()
 	if err := app.run(context.Background(), []string{"watch", "--once"}); err == nil || !strings.Contains(err.Error(), "RESEND_API_KEY") {
 		t.Fatalf("expected missing delivery key, got %v", err)

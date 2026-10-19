@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"database/sql"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -15,73 +14,9 @@ import (
 	"resetwatch/internal/watch"
 )
 
-func (a *application) connect(ctx context.Context, args []string) error {
-	if len(args) > 0 && args[0] == "claude" {
-		return a.connectClaude(ctx, args[1:])
-	}
-	binary, err := a.connectFlags(args)
-	if err != nil {
-		return err
-	}
-	resolved, err := quota.ResolveBinary(binary)
-	if err != nil {
-		return fmt.Errorf("connect Codex: %w", err)
-	}
-	if err := a.connectCodex(ctx, resolved); err != nil {
-		return err
-	}
-	fmt.Fprintln(a.out, "Connected to Codex. Account credentials remain with Codex.")
-	fmt.Fprintln(a.out, "A running ResetWatch watcher adopts this connection on its next cycle.")
-	return nil
-}
-
-func (a *application) connectFlags(args []string) (string, error) {
-	if len(args) == 0 || args[0] != "codex" {
-		return "", errors.New("supported provider: codex; run resetwatch connect codex")
-	}
-	flags := a.flags("connect codex")
-	binary := flags.String("codex-bin", "", "native Codex executable path")
-	if err := flags.Parse(args[1:]); err != nil {
-		return "", err
-	}
-	if err := noArguments(flags.Args()); err != nil {
-		return "", err
-	}
-	return *binary, nil
-}
-
-func (a *application) connectCodex(ctx context.Context, binary string) error {
-	provider := quota.Codex{Binary: binary, Timeout: 15 * time.Second, Version: version}
-	engine := watch.Engine{DB: a.db, Provider: provider}
-	if _, err := engine.Observe(ctx); err != nil {
-		return fmt.Errorf("connect Codex: %w", err)
-	}
-	return a.db.SaveCodexBinary(ctx, binary)
-}
-
-func (a *application) configure(ctx context.Context, args []string) error {
-	flags := a.flags("notify")
-	to := flags.String("email", "", "recipient email address")
-	from := flags.String("from", "", "verified Resend sender address")
-	if err := flags.Parse(args); err != nil {
-		return err
-	}
-	if err := noArguments(flags.Args()); err != nil {
-		return err
-	}
-	if err := notify.ValidateAddresses(*to, *from); err != nil {
-		return err
-	}
-	if err := a.db.ConfigureNotifications(ctx, *to, *from, time.Now().UTC()); err != nil {
-		return err
-	}
-	fmt.Fprintln(a.out, "Email settings saved. Save RESEND_API_KEY in .env or set it in the environment, then run resetwatch watch.")
-	return nil
-}
-
 var noReadings = map[string]string{
-	"codex":  "no connected account; run resetwatch connect codex",
-	"claude": "no Claude readings yet; run resetwatch connect claude",
+	"codex":  "no Codex readings yet; run resetwatch setup",
+	"claude": "no Claude readings yet; run resetwatch setup",
 }
 
 // statusSnapshot picks the provider to show and returns its saved reading, refreshing Codex on request.
@@ -160,7 +95,7 @@ func (a *application) watch(ctx context.Context, args []string) error {
 		return err
 	}
 	if err := notify.ValidateAddresses(config.To, config.From); err != nil {
-		return errors.New("configure email first: resetwatch notify --email ... --from ...")
+		return errors.New("configure email first: run resetwatch setup")
 	}
 	key, err := a.resendAPIKey()
 	if err != nil {
@@ -199,24 +134,4 @@ func writeJSON(out interface{ Write([]byte) (int, error) }, value any) error {
 	encoder := json.NewEncoder(out)
 	encoder.SetIndent("", "  ")
 	return encoder.Encode(value)
-}
-
-func (a *application) retry(ctx context.Context, args []string) error {
-	flags := a.flags("retry")
-	id := flags.String("id", "", "full alert ID from history --json")
-	if err := flags.Parse(args); err != nil {
-		return err
-	}
-	if err := noArguments(flags.Args()); err != nil {
-		return err
-	}
-	decoded, err := hex.DecodeString(*id)
-	if err != nil || len(decoded) != 32 {
-		return errors.New("provide the full 64-character alert ID from history --json")
-	}
-	if err := a.db.Retry(ctx, *id, time.Now().UTC()); err != nil {
-		return err
-	}
-	fmt.Fprintln(a.out, "Alert requeued with its original message and deduplication key. Start the watcher to deliver it.")
-	return nil
 }

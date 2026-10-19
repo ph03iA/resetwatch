@@ -77,7 +77,7 @@ func onlyPending(t *testing.T, alerts []store.Alert, window string, reset int64)
 
 func TestClaudeReadingSchedulesReminder(t *testing.T) {
 	app, _ := testApplication(t)
-	runOK(t, app, "notify", "--email", "person@example.test", "--from", "alerts@example.test")
+	saveEmail(t, app, "person@example.test")
 	reset := time.Now().Add(2 * time.Hour).Unix()
 	claudeLine(t, app, "", map[string][2]int64{"five_hour": {100, reset}})
 	onlyPending(t, claudeAlerts(t, app), "claude:five_hour", reset)
@@ -86,7 +86,7 @@ func TestClaudeReadingSchedulesReminder(t *testing.T) {
 // A lower percentage with the same reset time does not prove a new window began.
 func TestClaudeLowerPercentageDoesNotReleaseReminder(t *testing.T) {
 	app, _ := testApplication(t)
-	runOK(t, app, "notify", "--email", "person@example.test", "--from", "alerts@example.test")
+	saveEmail(t, app, "person@example.test")
 	reset := time.Now().Add(2 * time.Hour).Unix()
 	claudeLine(t, app, "", map[string][2]int64{"five_hour": {100, reset}})
 	claudeLine(t, app, "", map[string][2]int64{"five_hour": {50, reset}})
@@ -98,7 +98,7 @@ func TestClaudeLowerPercentageDoesNotReleaseReminder(t *testing.T) {
 // Fresh Claude data showing a later reset means the window already reset, so the reminder is due now.
 func TestClaudeNewWindowReleasesReminderEarly(t *testing.T) {
 	app, _ := testApplication(t)
-	runOK(t, app, "notify", "--email", "person@example.test", "--from", "alerts@example.test")
+	saveEmail(t, app, "person@example.test")
 	reset := time.Now().Add(2 * time.Hour).Unix()
 	claudeLine(t, app, "", map[string][2]int64{"five_hour": {100, reset}})
 	claudeLine(t, app, "", map[string][2]int64{"five_hour": {3, reset + 3600}})
@@ -112,28 +112,28 @@ func TestClaudeNewWindowReleasesReminderEarly(t *testing.T) {
 // Claude may omit a window; that means unknown, so its reminder stays.
 func TestClaudePartialReadingKeepsReminder(t *testing.T) {
 	app, _ := testApplication(t)
-	runOK(t, app, "notify", "--email", "person@example.test", "--from", "alerts@example.test")
+	saveEmail(t, app, "person@example.test")
 	reset := time.Now().Add(2 * time.Hour).Unix()
 	claudeLine(t, app, "", map[string][2]int64{"five_hour": {100, reset}, "seven_day": {40, reset + 86400}})
 	claudeLine(t, app, "", map[string][2]int64{"seven_day": {41, reset + 86400}})
 	onlyPending(t, claudeAlerts(t, app), "claude:five_hour", reset)
 }
 
-func TestNotifySchedulesAndMovesClaudeReminders(t *testing.T) {
+func TestEmailSetupSchedulesAndMovesClaudeReminders(t *testing.T) {
 	app, _ := testApplication(t)
 	reset := time.Now().Add(2 * time.Hour).Unix()
 	claudeLine(t, app, "", map[string][2]int64{"five_hour": {100, reset}})
 	if len(claudeAlerts(t, app)) != 0 {
 		t.Fatal("no reminder can exist before email setup")
 	}
-	runOK(t, app, "notify", "--email", "first@example.test", "--from", "alerts@example.test")
+	saveEmail(t, app, "first@example.test")
 	onlyPending(t, claudeAlerts(t, app), "claude:five_hour", reset)
 	claudeLine(t, app, "", map[string][2]int64{"seven_day": {10, reset + 86400}})
-	runOK(t, app, "notify", "--email", "second@example.test", "--from", "alerts@example.test")
+	saveEmail(t, app, "second@example.test")
 	if alert := onlyPending(t, claudeAlerts(t, app), "claude:five_hour", reset); alert.To != "second@example.test" {
 		t.Fatalf("reminder was not moved to the new address: %#v", alert)
 	}
-	runOK(t, app, "notify", "--email", "second@example.test", "--from", "alerts@example.test")
+	saveEmail(t, app, "second@example.test")
 	onlyPending(t, claudeAlerts(t, app), "claude:five_hour", reset) // same settings: no duplicate
 }
 
@@ -162,22 +162,6 @@ func TestRetiredClaudeStatusLineIsSilent(t *testing.T) {
 		if err := app.run(context.Background(), []string{"claude-statusline"}); err != nil || output.Len() != 0 {
 			t.Fatalf("retired status line must print nothing: err %v, output %q", err, output.String())
 		}
-	}
-}
-
-func TestConnectClaudeRecordsReadingAndEnablesProvider(t *testing.T) {
-	app, _ := testApplication(t)
-	reset := time.Now().Add(time.Hour).Unix()
-	app.claude = fakeClaude{snapshot: claudeReading(map[string][2]int64{"five_hour": {12, reset}})}
-	runOK(t, app, "connect", "claude")
-	runOK(t, app, "status", "--provider", "claude", "--json")
-	if out := app.out.(*strings.Builder).String(); !strings.Contains(out, "claude:five_hour") {
-		t.Fatalf("connect claude did not save the first reading: %s", out)
-	}
-	app.claude = fakeClaude{err: quota.ErrNoClaudeLimits}
-	app.out = &strings.Builder{}
-	if err := app.run(context.Background(), []string{"connect", "claude"}); err == nil {
-		t.Fatal("connect claude must fail when Claude reports no plan limits")
 	}
 }
 

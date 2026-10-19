@@ -8,6 +8,6 @@ Keep the default HTML instructions and both command sets in `app.js` aligned wit
 
 Guided setup chooses Codex, Claude or both, asks for email and sender, reuses an existing Resend key or saves a missing key in the current folder's `.env`, and offers an optional test. Users must run watch from that folder. The default `onboarding@resend.dev` sender only reaches their Resend account email; other recipients require a verified domain. The website itself never collects credentials, connects accounts or sends email.
 
-The page retains its decorative envelope, process rail, three-step installation workbook, operating notes and responsive layout. It contains no simulated account state, countdown, sample email or demo controls. Claude remains expected-only; Codex confirmation requires fresh backend permission. New reset emails use IST with a UTC reference.
+The page retains its decorative envelope, process rail, three-step installation workbook, operating notes and responsive layout. It contains no simulated account state, countdown, sample email or demo controls. Codex and Claude emails can say "is back" from a fresh reading; Codex also needs backend permission. Reset emails use the computer's time zone with a UTC reference.
 
 Preview locally with `node tools/serve.mjs` from the repository root. Keep the site unpublished unless publishing is explicitly requested.

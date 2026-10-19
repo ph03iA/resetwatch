@@ -34,7 +34,7 @@ func (a *application) status(ctx context.Context, args []string) error {
 	if options.json {
 		return writeJSON(a.out, snapshot)
 	}
-	a.render(snapshot, false)
+	a.render(snapshot)
 	return nil
 }
 
@@ -152,7 +152,7 @@ func (a *application) renderStatusReadings(providers []string, readings map[stri
 			fmt.Fprintln(a.out, provider+": awaiting first reading.")
 			continue
 		}
-		a.render(*readings[provider], false)
+		a.render(*readings[provider])
 	}
 }
 

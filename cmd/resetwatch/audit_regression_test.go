@@ -13,32 +13,32 @@ import (
 	"resetwatch/internal/store"
 )
 
-func TestNotifyFirstConfigurationAfterPartialClaudeReading(t *testing.T) {
+func TestEmailChangeFirstConfigurationAfterPartialClaudeReading(t *testing.T) {
 	app, _ := testApplication(t)
 	reset := time.Now().Add(time.Hour).Unix()
 	claudeLine(t, app, "session", map[string][2]int64{"five_hour": {100, reset}})
 	claudeLine(t, app, "session", map[string][2]int64{"seven_day": {40, reset + 86400}})
-	runOK(t, app, "notify", "--email", "first@example.test", "--from", "alerts@example.test")
+	saveEmail(t, app, "first@example.test")
 	onlyPending(t, claudeAlerts(t, app), "claude:five_hour", reset)
 }
 
-func TestNotifyAddressRoundTripKeepsDueClaudeReminder(t *testing.T) {
+func TestEmailChangeAddressRoundTripKeepsDueClaudeReminder(t *testing.T) {
 	app, _ := testApplication(t)
-	runOK(t, app, "notify", "--email", "first@example.test", "--from", "alerts@example.test")
+	saveEmail(t, app, "first@example.test")
 	now := time.Now().UTC()
 	db := auditStateDB(t, app)
 	seedDueClaudeReminder(t, db, now)
-	runOK(t, app, "notify", "--email", "second@example.test", "--from", "alerts@example.test")
-	runOK(t, app, "notify", "--email", "first@example.test", "--from", "alerts@example.test")
+	saveEmail(t, app, "second@example.test")
+	saveEmail(t, app, "first@example.test")
 	alert := onlyPending(t, claudeAlerts(t, app), "claude:five_hour", now.Add(-time.Hour).Unix())
 	if alert.To != "first@example.test" || alert.NextAttempt.After(now) {
 		t.Fatalf("returning to the first address lost the due reminder: %#v", alert)
 	}
 }
 
-func TestNotifyAddressChangeDoesNotResendCompletedClaudeReset(t *testing.T) {
+func TestEmailChangeAddressChangeDoesNotResendCompletedClaudeReset(t *testing.T) {
 	app, _ := testApplication(t)
-	runOK(t, app, "notify", "--email", "first@example.test", "--from", "alerts@example.test")
+	saveEmail(t, app, "first@example.test")
 	now := time.Now().UTC()
 	db := auditStateDB(t, app)
 	seedDueClaudeReminder(t, db, now)
@@ -49,23 +49,23 @@ func TestNotifyAddressChangeDoesNotResendCompletedClaudeReset(t *testing.T) {
 	if err := db.Finish(context.Background(), alert, "sent", "", now, now); err != nil {
 		t.Fatal(err)
 	}
-	runOK(t, app, "notify", "--email", "second@example.test", "--from", "alerts@example.test")
+	saveEmail(t, app, "second@example.test")
 	alerts := claudeAlerts(t, app)
 	if len(alerts) != 1 || alerts[0].State != "sent" {
 		t.Fatalf("changing email rearmed a completed reset: %#v", alerts)
 	}
 }
 
-func TestNotifyAddressChangeDuringDeliveryLeavesConfigurationIntact(t *testing.T) {
+func TestEmailChangeAddressChangeDuringDeliveryLeavesConfigurationIntact(t *testing.T) {
 	app, _ := testApplication(t)
-	runOK(t, app, "notify", "--email", "first@example.test", "--from", "alerts@example.test")
+	saveEmail(t, app, "first@example.test")
 	now := time.Now().UTC()
 	db := auditStateDB(t, app)
 	seedDueClaudeReminder(t, db, now)
 	if _, err := db.Claim(context.Background(), now); err != nil {
 		t.Fatal(err)
 	}
-	if err := app.run(context.Background(), []string{"notify", "--email", "second@example.test", "--from", "alerts@example.test"}); err == nil {
+	if err := setEmail(app, "second@example.test"); err == nil {
 		t.Fatal("changing addresses during a live delivery must wait for completion")
 	}
 	config, err := db.Config(context.Background())
@@ -75,7 +75,7 @@ func TestNotifyAddressChangeDuringDeliveryLeavesConfigurationIntact(t *testing.T
 	if config.To != "first@example.test" {
 		t.Fatal("a rejected configuration change still replaced the recipient")
 	}
-	runOK(t, app, "notify", "--email", "first@example.test", "--from", "alerts@example.test")
+	saveEmail(t, app, "first@example.test")
 	alerts := claudeAlerts(t, app)
 	if len(alerts) != 1 || alerts[0].State != "sending" {
 		t.Fatalf("unchanged settings disturbed the live delivery: %#v", alerts)
@@ -84,7 +84,7 @@ func TestNotifyAddressChangeDuringDeliveryLeavesConfigurationIntact(t *testing.T
 
 func TestClaudeReadingRecoversAfterSchedulingFailure(t *testing.T) {
 	app, _ := testApplication(t)
-	runOK(t, app, "notify", "--email", "person@example.test", "--from", "alerts@example.test")
+	saveEmail(t, app, "person@example.test")
 	writer, err := sql.Open("sqlite", filepath.Join(app.getenv("RESETWATCH_HOME"), "state.db"))
 	if err != nil {
 		t.Fatal(err)
@@ -128,6 +128,32 @@ func auditStateDB(t *testing.T, app *application) *store.DB {
 	}
 	t.Cleanup(func() { _ = db.Close() })
 	return db
+}
+
+// setEmail saves email settings the way setup does, keeping the provider selection.
+func setEmail(app *application, to string) error {
+	db, err := store.Open(app.getenv("RESETWATCH_HOME"))
+	if err != nil {
+		return err
+	}
+	defer db.Close()
+	ctx := context.Background()
+	config, err := db.Config(ctx)
+	if err != nil {
+		return err
+	}
+	config.To, config.From = to, "alerts@example.test"
+	if config.Providers == "" {
+		config.Providers = "both"
+	}
+	return db.ConfigureSetup(ctx, config, time.Now().UTC())
+}
+
+func saveEmail(t *testing.T, app *application, to string) {
+	t.Helper()
+	if err := setEmail(app, to); err != nil {
+		t.Fatal(err)
+	}
 }
 
 func seedDueClaudeReminder(t *testing.T, db *store.DB, now time.Time) {

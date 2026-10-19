@@ -270,90 +270,6 @@ func TestFreezeMessagePreservesExactRetryPayloadAcrossReopen(t *testing.T) {
 	}
 }
 
-func TestExplicitRetryPreservesPayloadAndRejectsFinishedAlerts(t *testing.T) {
-	ctx := context.Background()
-	db := openTestDB(t, t.TempDir())
-	now := storeTime()
-	due := now.Add(time.Hour)
-	must(t, db.Schedule(ctx, testSnapshot(now, due, 100), testConfig(), now))
-	alert, err := db.Claim(ctx, due)
-	must(t, err)
-	initial := notify.Message{Key: alert.ID, To: alert.To, From: alert.From, Provider: alert.Provider,
-		Window: alert.Window, ResetAt: alert.ResetAt}
-	frozen, err := db.FreezeMessage(ctx, alert, initial)
-	must(t, err)
-	must(t, db.Finish(ctx, alert, "failed", "permanent", due, due))
-	must(t, db.Retry(ctx, alert.ID, due.Add(time.Minute)))
-	claimed, err := db.Claim(ctx, due.Add(time.Minute))
-	must(t, err)
-	changed := initial
-	changed.Confirmed = true
-	retried, err := db.FreezeMessage(ctx, claimed, changed)
-	must(t, err)
-	if claimed.ID != alert.ID || claimed.Attempts != 2 || !reflect.DeepEqual(frozen, retried) {
-		t.Fatal("explicit retry lost the delivery identity or original payload")
-	}
-	must(t, db.Finish(ctx, claimed, "sent", "", due, due))
-	if err := db.Retry(ctx, claimed.ID, due.Add(2*time.Minute)); err == nil {
-		t.Fatal("explicit retry requeued an already sent alert")
-	}
-	if err := db.Retry(ctx, "missing-id", due); err == nil {
-		t.Fatal("explicit retry accepted an unknown alert")
-	}
-}
-
-func TestExplicitRetryRejectsExpiredDeliveryWindows(t *testing.T) {
-	tests := []struct {
-		name    string
-		firstAt time.Duration
-		retryAt time.Duration
-	}{
-		{"23 hour idempotency window", 0, 23 * time.Hour},
-		{"24 hour reset window", 23 * time.Hour, 24 * time.Hour},
-	}
-	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
-			ctx := context.Background()
-			db := openTestDB(t, t.TempDir())
-			now := storeTime()
-			due := now.Add(time.Hour)
-			must(t, db.Schedule(ctx, testSnapshot(now, due, 100), testConfig(), now))
-			alert, err := db.Claim(ctx, due.Add(test.firstAt))
-			must(t, err)
-			must(t, db.Finish(ctx, alert, "failed", "permanent", due, due))
-			if err := db.Retry(ctx, alert.ID, due.Add(test.retryAt)); err == nil {
-				t.Fatal("explicit retry exceeded its safe delivery window")
-			}
-			assertStates(t, db, map[string]int{"failed": 1})
-		})
-	}
-}
-
-func TestExplicitRetryRejectsEightAttemptAlert(t *testing.T) {
-	ctx := context.Background()
-	db := openTestDB(t, t.TempDir())
-	now := storeTime()
-	due := now.Add(time.Hour)
-	must(t, db.Schedule(ctx, testSnapshot(now, due, 100), testConfig(), now))
-	var alert Alert
-	for attempt := 1; attempt <= 8; attempt++ {
-		var err error
-		alert, err = db.Claim(ctx, due)
-		must(t, err)
-		must(t, db.Finish(ctx, alert, "failed", "permanent", due, due))
-		if attempt < 8 {
-			must(t, db.Retry(ctx, alert.ID, due))
-		}
-	}
-	if alert.Attempts != 8 {
-		t.Fatalf("expected eight persisted attempts, got %d", alert.Attempts)
-	}
-	if err := db.Retry(ctx, alert.ID, due); err == nil {
-		t.Fatal("explicit retry exceeded eight delivery attempts")
-	}
-	assertStates(t, db, map[string]int{"failed": 1})
-}
-
 func openTestDB(t *testing.T, dir string) *DB {
 	t.Helper()
 	db, err := Open(dir)
@@ -364,6 +280,19 @@ func openTestDB(t *testing.T, dir string) *DB {
 
 func testConfig() Config {
 	return Config{To: "person@example.test", From: "ResetWatch <alerts@example.test>", CodexBin: "codex-native"}
+}
+
+// setEmail changes only the email settings, the way rerunning setup with the same providers does.
+func setEmail(ctx context.Context, db *DB, to, from string, now time.Time) error {
+	config, err := db.Config(ctx)
+	if err != nil {
+		return err
+	}
+	config.To, config.From = to, from
+	if config.Providers == "" {
+		config.Providers = "both"
+	}
+	return db.ConfigureSetup(ctx, config, now)
 }
 
 func storeTime() time.Time { return time.Date(2030, 1, 2, 10, 0, 0, 0, time.UTC) }
@@ -414,8 +343,8 @@ func TestAddressChangeKeepsDueReminderDueAndFrozenPayload(t *testing.T) {
 	must(t, db.Finish(ctx, old, "retry", "temporary", due, due))
 	moved := testConfig()
 	moved.To = "new@example.test"
-	must(t, db.ConfigureNotifications(ctx, moved.To, moved.From, due))
-	must(t, db.ConfigureNotifications(ctx, moved.To, moved.From, due)) // same settings again: nothing more to move
+	must(t, setEmail(ctx, db, moved.To, moved.From, due))
+	must(t, setEmail(ctx, db, moved.To, moved.From, due)) // same settings again: nothing more to move
 	if config, err := db.Config(ctx); err != nil || config.To != moved.To {
 		t.Fatalf("settings were not saved with the moved reminder: %#v %v", config, err)
 	}

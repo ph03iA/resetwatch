@@ -7,12 +7,6 @@ import (
 	"time"
 )
 
-// ConfigureNotifications changes settings and outstanding reminders in one transaction.
-// Existing completed reminders are never reconstructed from a saved quota observation.
-func (d *DB) ConfigureNotifications(ctx context.Context, to, from string, now time.Time) error {
-	return d.configureNotifications(ctx, nil, to, from, now)
-}
-
 func reconcileNotifications(ctx context.Context, tx *sql.Tx, old, config Config, now time.Time) error {
 	if old.To == "" || old.From == "" {
 		return scheduleSaved(ctx, tx, old, config, now)
@@ -29,7 +23,7 @@ func rejectActiveDelivery(ctx context.Context, tx *sql.Tx, config Config, now ti
 		return err
 	}
 	if active {
-		return errors.New("an email delivery is in progress; retry setup or notify after it finishes or its two-minute lease expires")
+		return errors.New("an email delivery is in progress; rerun setup after it finishes or its two-minute lease expires")
 	}
 	return nil
 }

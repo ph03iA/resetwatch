@@ -54,7 +54,7 @@ func (a *application) run(ctx context.Context, args []string) error {
 	}
 	local := map[string]func([]string) error{
 		"help": a.help, "--help": a.help, "-h": a.help,
-		"version": a.printVersion, "--version": a.printVersion, "demo": a.demo,
+		"version": a.printVersion, "--version": a.printVersion,
 		"claude-statusline": a.claudeStatusLine,
 	}
 	if command, ok := local[args[0]]; ok {
@@ -65,8 +65,7 @@ func (a *application) run(ctx context.Context, args []string) error {
 
 func (a *application) stateCommand(ctx context.Context, args []string) error {
 	commands := map[string]func(context.Context, []string) error{
-		"connect": a.connect, "notify": a.configure, "status": a.status, "setup": a.setup,
-		"history": a.history, "watch": a.watch, "retry": a.retry,
+		"setup": a.setup, "watch": a.watch, "status": a.status, "history": a.history,
 	}
 	command, ok := commands[args[0]]
 	if !ok {
@@ -125,15 +124,10 @@ func (a *application) help(args []string) error {
 Usage:
   resetwatch setup [--providers codex|claude|both] [--email ADDRESS] [--from SENDER]
                    [--codex-bin PATH] [--test-email] [--non-interactive]
-  resetwatch connect claude
-  resetwatch connect codex [--codex-bin /path/to/codex]
-  resetwatch notify --email you@example.com --from "ResetWatch <alerts@yourdomain.com>"
   resetwatch test-email --email your-resend-account-email [--from SENDER]
   resetwatch watch [--interval 1m] [--once]
   resetwatch status [--provider codex|claude | --all] [--refresh] [--json]
   resetwatch history [--limit 20] [--json]
-  resetwatch retry --id <full-alert-id>
-  resetwatch demo
   resetwatch version
 
 Run setup for guided provider and email configuration; the watcher remains a separate command.

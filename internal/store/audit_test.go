@@ -56,7 +56,7 @@ func TestConcurrentClaudeWindowsSurviveFirstEmailSetup(t *testing.T) {
 	if len(saved.Windows) != 2 {
 		t.Fatalf("concurrent callbacks lost a window: %+v", saved)
 	}
-	must(t, db.ConfigureNotifications(ctx, testConfig().To, testConfig().From, now))
+	must(t, setEmail(ctx, db, testConfig().To, testConfig().From, now))
 	assertStates(t, db, map[string]int{"pending": 2})
 }
 
@@ -100,7 +100,7 @@ func TestNotificationChangeRecoversExpiredClaimWithoutRewritingOldPayload(t *tes
 	payload := storedPayload(t, db, old.ID)
 	expired := due.Add(3 * time.Minute)
 	must(t, db.RecordSnapshot(ctx, claudeAuditSnapshot(expired, expired.Add(5*time.Hour), 2), expired))
-	must(t, db.ConfigureNotifications(ctx, "new@example.test", config.From, expired))
+	must(t, setEmail(ctx, db, "new@example.test", config.From, expired))
 	moved, err := db.Claim(ctx, expired)
 	must(t, err)
 	if moved.To != "new@example.test" || moved.ID == old.ID || !moved.ResetAt.Equal(old.ResetAt) {
@@ -129,8 +129,8 @@ func TestReturningToCancelledDestinationPreservesItsFrozenRetry(t *testing.T) {
 	must(t, err)
 	payload := storedPayload(t, db, old.ID)
 	must(t, db.Finish(ctx, old, "retry", "synthetic transient failure", due, due))
-	must(t, db.ConfigureNotifications(ctx, "new@example.test", config.From, due))
-	must(t, db.ConfigureNotifications(ctx, config.To, config.From, due))
+	must(t, setEmail(ctx, db, "new@example.test", config.From, due))
+	must(t, setEmail(ctx, db, config.To, config.From, due))
 	resumed, err := db.Claim(ctx, due)
 	must(t, err)
 	if resumed.ID != old.ID || resumed.Attempts != 2 || !resumed.FirstAttempt.Equal(old.FirstAttempt) {
@@ -156,7 +156,7 @@ func TestFailedDestinationRollsBackNotificationChange(t *testing.T) {
  VALUES(?,?,?,?,?,?,?,'failed',?,?)`, id, snapshot.Provider, snapshot.AccountID, snapshot.Windows[0].ID,
 		snapshot.Windows[0].ResetsAt.Unix(), destination.To, destination.From, now.Unix(), now.Unix())
 	must(t, err)
-	if err := db.ConfigureNotifications(ctx, destination.To, destination.From, now); err == nil {
+	if err := setEmail(ctx, db, destination.To, destination.From, now); err == nil {
 		t.Fatal("a failed destination was silently revived")
 	}
 	saved, err := db.Config(ctx)

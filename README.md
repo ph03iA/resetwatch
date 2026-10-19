@@ -86,11 +86,9 @@ Check what it sees at any time:
 | `status [--provider codex\|claude] [--all] [--refresh] [--json]` | Show usage readings. |
 | `history [--limit 20] [--json]` | Show reminder emails and their state. |
 | `test-email --email ADDRESS [--from SENDER]` | Send one email marked TEST now. Checks no usage. |
-| `connect codex [--codex-bin PATH]` / `connect claude` | Connect one tool without full setup. |
-| `notify --email ADDRESS --from SENDER` | Save email settings only. |
-| `retry --id FULL_ALERT_ID` | Retry a failed email (ID from `history --json`). |
-| `demo` | Show labeled sample data. Touches no account. |
 | `version` | Print the version. |
+
+To change your email or which tools are watched, run `setup` again.
 
 ## Limits
 

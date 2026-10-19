@@ -193,38 +193,6 @@ func (d *DB) History(ctx context.Context, limit int) ([]Alert, error) {
 	return alerts, rows.Err()
 }
 
-func (d *DB) Retry(ctx context.Context, id string, now time.Time) error {
-	tx, err := d.db.BeginTx(ctx, nil)
-	if err != nil {
-		return err
-	}
-	defer tx.Rollback()
-	config, err := loadConfig(ctx, tx)
-	if err != nil {
-		return err
-	}
-	if err := retrySelected(ctx, tx, config, id, now); err != nil {
-		return err
-	}
-	return tx.Commit()
-}
-
-func retrySelected(ctx context.Context, tx *sql.Tx, config Config, id string, now time.Time) error {
-	result, err := tx.ExecContext(ctx, `UPDATE alerts SET state='retry',next_attempt=?,updated_at=?,last_error=''
- WHERE id=? AND state='failed' AND attempts<8 AND first_attempt>? AND reset_at>?
- AND ((provider='codex' AND ?) OR (provider='claude' AND ?))`,
-		now.Unix(), now.Unix(), id, now.Add(-23*time.Hour).Unix(), now.Add(-24*time.Hour).Unix(),
-		config.Selected("codex"), config.Selected("claude"))
-	if err != nil {
-		return err
-	}
-	count, err := result.RowsAffected()
-	if err == nil && count != 1 {
-		return errors.New("alert is not failed, not found, exhausted eight attempts, outside its safe retry window, or its provider is disabled")
-	}
-	return err
-}
-
 // moveAlerts readdresses undelivered reminders after the email settings change. Each gets a new
 // delivery key and an empty payload; the old entry is cancelled with its frozen message untouched.
 // Reset and due times carry over, so an already-due reminder stays due.

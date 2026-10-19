@@ -221,15 +221,6 @@ func TestSetupRestoresStatusLineFromOlderVersions(t *testing.T) {
 	assertOriginalClaudeStatusLine(t, app)
 }
 
-func TestConnectClaudeRestoresStatusLineFromOlderVersions(t *testing.T) {
-	app, _, _ := setupTestApplication(t, "re_fixture")
-	installOldClaudeStatusLine(t, app, []byte(`{"statusLine":{"type":"command","command":"original-status"},"theme":"fixture"}`))
-	if err := app.run(context.Background(), []string{"connect", "claude"}); err != nil {
-		t.Fatal(err)
-	}
-	assertOriginalClaudeStatusLine(t, app)
-}
-
 func TestSetupOptionalEmailAndFailureRetainsConfiguration(t *testing.T) {
 	cases := []struct {
 		name          string

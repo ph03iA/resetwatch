@@ -9,11 +9,8 @@ import (
 	"resetwatch/internal/store"
 )
 
-func (a *application) render(snapshot quota.Snapshot, demo bool) {
+func (a *application) render(snapshot quota.Snapshot) {
 	fmt.Fprintln(a.out, "\n  RESETWATCH / QUOTA MONITOR")
-	if demo {
-		fmt.Fprintln(a.out, "  DEMO DATA — no accounts accessed, no emails sent")
-	}
 	fmt.Fprintln(a.out, "  ──────────────────────────────────────────────────────")
 	fmt.Fprintf(a.out, "  %-22s %-20s %s\n", "WINDOW", "USED", "NEXT RESET")
 	for _, window := range snapshot.Windows {
@@ -50,17 +47,4 @@ func (a *application) renderHistory(alerts []store.Alert) {
 			fmt.Fprintln(a.out, "  "+alert.LastError)
 		}
 	}
-}
-
-func (a *application) demo(args []string) error {
-	if err := noArguments(args); err != nil {
-		return err
-	}
-	now := time.Now().UTC()
-	a.render(quota.Snapshot{Provider: "codex", AccountID: "demo", ObservedAt: now,
-		Windows: []quota.Window{
-			{ID: "codex:primary", UsedPercent: 100, ResetsAt: now.Add(2*time.Hour + 14*time.Minute), Duration: 5 * time.Hour},
-			{ID: "codex:secondary", UsedPercent: 36, ResetsAt: now.Add(3 * 24 * time.Hour), Duration: 7 * 24 * time.Hour},
-		}}, true)
-	return nil
 }

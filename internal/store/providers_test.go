@@ -158,7 +158,7 @@ func TestSetupRejectsLiveDeliveryAndCancelsExpiredClaim(t *testing.T) {
 	}
 }
 
-func TestClaimAndRetryEnforceCurrentSelection(t *testing.T) {
+func TestClaimEnforcesCurrentSelection(t *testing.T) {
 	ctx := context.Background()
 	db := openTestDB(t, t.TempDir())
 	now := storeTime()
@@ -170,38 +170,12 @@ func TestClaimAndRetryEnforceCurrentSelection(t *testing.T) {
 	must(t, err)
 	must(t, db.Finish(ctx, alert, "failed", "synthetic failure", due, due))
 	must(t, db.SaveConfig(ctx, providerConfig("codex")))
-	if err := db.Retry(ctx, alert.ID, due); err == nil {
-		t.Fatal("manual retry bypassed provider deselection")
-	}
 	_, err = db.db.Exec("UPDATE alerts SET state='retry' WHERE id=?", alert.ID)
 	must(t, err)
 	if _, err := db.Claim(ctx, due); !errors.Is(err, sql.ErrNoRows) {
 		t.Fatalf("claim bypassed current selection: %v", err)
 	}
 	assertStates(t, db, map[string]int{"cancelled": 1})
-}
-
-func TestManualProviderEnablePreservesOtherSettingsWithoutScheduling(t *testing.T) {
-	ctx := context.Background()
-	db := openTestDB(t, t.TempDir())
-	now := storeTime()
-	config := providerConfig("claude")
-	must(t, db.ConfigureSetup(ctx, config, now))
-	must(t, db.SaveSnapshot(ctx, testSnapshot(now, now.Add(time.Hour), 100)))
-	must(t, db.SaveCodexBinary(ctx, "replacement-codex"))
-	saved, err := db.Config(ctx)
-	must(t, err)
-	if saved.Providers != "both" || saved.CodexBin != "replacement-codex" || saved.To != config.To || saved.From != config.From {
-		t.Fatalf("manual Codex enable lost settings: %+v", saved)
-	}
-	assertStates(t, db, map[string]int{})
-	saved.Providers = "codex"
-	must(t, db.SaveConfig(ctx, saved))
-	must(t, db.EnableProvider(ctx, "claude"))
-	if err := db.EnableProvider(ctx, "unknown"); err == nil {
-		t.Fatal("unsupported provider enabled")
-	}
-	assertStates(t, db, map[string]int{})
 }
 
 func TestInitialSetupSkipsNewlyEnabledCachedProvider(t *testing.T) {
@@ -228,9 +202,9 @@ func TestReaddressDoesNotRearmDisabledDestinationFromCache(t *testing.T) {
 	must(t, db.RecordSnapshot(ctx, snapshot, now))
 	must(t, db.ConfigureSetup(ctx, providerConfig("codex"), now))
 	must(t, db.ConfigureSetup(ctx, config, now))
-	must(t, db.ConfigureNotifications(ctx, "other@example.test", config.From, now))
+	must(t, setEmail(ctx, db, "other@example.test", config.From, now))
 	must(t, db.RecordSnapshot(ctx, snapshot, now))
-	must(t, db.ConfigureNotifications(ctx, config.To, config.From, now))
+	must(t, setEmail(ctx, db, config.To, config.From, now))
 	assertStates(t, db, map[string]int{"cancelled": 2})
 	must(t, db.RecordSnapshot(ctx, snapshot, now))
 	assertStates(t, db, map[string]int{"pending": 1, "cancelled": 1})

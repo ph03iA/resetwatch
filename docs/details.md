@@ -18,10 +18,9 @@ The [README](../README.md) covers install, setup and everyday use. This page has
 - Each alert has one stable idempotency key and a message frozen on its first send attempt, so retries are identical and Resend never sends it twice. This also means an email first tried while offline keeps its **should be back** wording.
 - Network failures, HTTP 408/429, server errors and Resend's temporary `409 concurrent_idempotent_requests` are retried with exponential backoff and bounded `Retry-After`. Other failures stop automatic retries.
 - At most eight attempts, all within 23 hours of the first (Resend deduplicates for 24 hours). An interrupted final attempt becomes failed when its lease expires.
-- `retry --id` requeues a failed alert with fewer than eight attempts inside those time limits. The watcher sends it, and cancels it if the settings or account changed.
 - Alerts more than 24 hours past their reset are cancelled, so a computer waking after a week does not send old reminders.
 - Pending alerts and delivery leases survive restarts. A changed account, recipient or sender cancels unsent alerts for the old one.
-- Changing email settings moves pending reminders to the new address. If a delivery is in progress, `notify` and `setup` ask you to retry after it finishes or its two-minute lease expires.
+- Changing email settings moves pending reminders to the new address. If a delivery is in progress, setup asks you to rerun it after the delivery finishes or its two-minute lease expires.
 - Deselecting a provider in setup cancels its unsent reminders. Re-enabling it does not replay old ones; a new reading can arm a future reset.
 
 ## The `.env` key file
@@ -69,7 +68,7 @@ A user service normally needs an active session. Add `RESETWATCH_HOME` if you us
 
 ## Upgrading from older versions
 
-- Older versions replaced Claude Code's status line. Setup and `connect claude` restore your original entry and leave other settings alone; if you edited it since, it is left as is with a warning. `resetwatch claude-statusline` stays as a silent no-op so an old status line shows nothing instead of an error.
+- Older versions replaced Claude Code's status line. Setup restores your original entry and leave other settings alone; if you edited it since, it is left as is with a warning. `resetwatch claude-statusline` stays as a silent no-op so an old status line shows nothing instead of an error.
 - Older frozen retries keep their original text: local time if saved, otherwise UTC.
 - A confirmed Claude retry frozen by an older build is cancelled rather than rewritten under its old key.
 - If an older frozen retry with an unnamed sender fails with HTTP 422, rerun `setup --from 'ResetWatch <onboarding@resend.dev>'` instead of retrying it.

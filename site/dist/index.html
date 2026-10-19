@@ -75,7 +75,7 @@
       <ol class="lifecycle">
         <li><span class="lifecycle-node" aria-hidden="true"></span><span class="lifecycle-source">Codex / Claude Code</span><h3>Read the window.</h3><p>Reads Codex and Claude Code through your local sign-ins, the same data their usage screens show. No inference requests.</p><span class="lifecycle-number" aria-hidden="true">01</span></li>
         <li><span class="lifecycle-node" aria-hidden="true"></span><span class="lifecycle-source">SQLite / local state</span><h3>Save the reminder.</h3><p>An exhausted window creates a saved alert. Pending reminders resume when the watcher restarts.</p><span class="lifecycle-number" aria-hidden="true">02</span></li>
-        <li><span class="lifecycle-node" aria-hidden="true"></span><span class="lifecycle-source">Reset time / fresh check</span><h3>Check once more.</h3><p>At the recorded reset it checks Codex allowance when available. Claude reminders use the saved reset time and stay expected-only.</p><span class="lifecycle-number" aria-hidden="true">03</span></li>
+        <li><span class="lifecycle-node" aria-hidden="true"></span><span class="lifecycle-source">Reset time / fresh check</span><h3>Check once more.</h3><p>At the recorded reset it checks Codex and Claude once more. Fresh data says it is back; if it cannot check, the email says it should be back.</p><span class="lifecycle-number" aria-hidden="true">03</span></li>
         <li><span class="lifecycle-node lifecycle-node-last" aria-hidden="true"></span><span class="lifecycle-source">Resend / your inbox</span><h3>Send the context.</h3><p>The email says whether the reset is expected or fresh data confirms available allowance.</p><span class="lifecycle-number" aria-hidden="true">04</span></li>
       </ol>
     </section>

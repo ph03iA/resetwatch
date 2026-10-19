@@ -165,14 +165,34 @@ func TestSetupProviderFailureCancelOrSkipOnlyProvider(t *testing.T) {
 }
 
 // installOldClaudeStatusLine reproduces what older versions did: replace the user's status line.
+// installOldClaudeStatusLine reproduces what older versions left behind: ResetWatch's status line
+// in the settings and a backup of the user's original entry.
 func installOldClaudeStatusLine(t *testing.T, app *application, original []byte) {
 	t.Helper()
-	writeSetupSettings(t, app, original)
 	installer, err := app.claudeInstaller()
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := installer.Install(context.Background(), true); err != nil {
+	var settings map[string]json.RawMessage
+	if err := json.Unmarshal(original, &settings); err != nil {
+		t.Fatal(err)
+	}
+	installed := json.RawMessage(`{"type":"command","command":"resetwatch claude-statusline"}`)
+	backup, err := json.Marshal(map[string]any{"version": 1, "settings_path": filepath.Join(installer.ConfigDir, "settings.json"),
+		"had_entry": settings["statusLine"] != nil, "original": settings["statusLine"], "installed": installed})
+	if err != nil {
+		t.Fatal(err)
+	}
+	settings["statusLine"] = installed
+	current, err := json.Marshal(settings)
+	if err != nil {
+		t.Fatal(err)
+	}
+	writeSetupSettings(t, app, current)
+	if err := os.MkdirAll(installer.StateDir, 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(installer.StateDir, "claude-statusline.json"), backup, 0600); err != nil {
 		t.Fatal(err)
 	}
 }

@@ -117,8 +117,7 @@ func (a *application) claudeInstaller() (claudeconfig.Installer, error) {
 	if err != nil {
 		return claudeconfig.Installer{}, err
 	}
-	executable, err := os.Executable()
-	return claudeconfig.Installer{Executable: executable, StateDir: state, ConfigDir: configDir}, err
+	return claudeconfig.Installer{StateDir: state, ConfigDir: configDir}, nil
 }
 
 func (a *application) activateSetup(ctx context.Context, s *setupState) error {

@@ -76,13 +76,6 @@ func writeDocument(ctx context.Context, path string, doc document) error {
 	return localfile.Write(path, append(data, '\n'), doc.mode)
 }
 
-func ensureDirectory(path string) error {
-	if err := os.MkdirAll(path, 0700); err != nil {
-		return err
-	}
-	return checkDirectory(path)
-}
-
 func checkDirectory(path string) error {
 	info, err := os.Lstat(path)
 	if errors.Is(err, os.ErrNotExist) {
@@ -110,17 +103,4 @@ func matchesEntry(doc document, had bool, value json.RawMessage) bool {
 		return false
 	}
 	return reflect.DeepEqual(left, right)
-}
-
-func statusEntry(previous json.RawMessage, command string) (json.RawMessage, error) {
-	var fields map[string]json.RawMessage
-	if json.Unmarshal(previous, &fields) != nil || fields == nil {
-		fields = make(map[string]json.RawMessage)
-	}
-	encoded, err := json.Marshal(command)
-	if err != nil {
-		return nil, errors.New("could not prepare Claude launcher")
-	}
-	fields["type"], fields["command"] = json.RawMessage(`"command"`), encoded
-	return json.Marshal(fields)
 }

@@ -2,6 +2,8 @@
 
 ## Unreleased — 2026-10-16
 
+- Claude reset emails now say **is back** when a fresh reading taken after the reset leaves out that window: Claude omits a window until it is used again. The email also names the 5-hour or weekly limit in that case.
+- Claude usage now comes from Claude Code itself: the watcher starts Claude Code with no prompt and sends the experimental `get_usage` request behind `/usage` (the Claude Agent SDK approach), every cycle like Codex. Claude emails can say **is back** from a fresh reading, early resets are detected, and the account is identified. The status-line method is retired: setup and `connect claude` restore any status line an older version replaced, `--replace-statusline` is removed, and `claude-statusline` is a silent no-op for old installs. AGENTS.md records this owner-approved exception to documented-only interfaces.
 - Find npm-installed Codex on Windows from 32-bit ResetWatch builds too, and keep Claude's `settings.json` indented when setup installs or restores the status line.
 
 - Add guided `resetwatch setup`: choose Codex, Claude or both; configure email and a hidden local key; safely install and restore Claude status lines; optionally send a test. Provider selection applies live, disables unsent reminders and preserves delivery safety. Add combined status output and Windows npm executable discovery.

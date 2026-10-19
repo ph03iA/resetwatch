@@ -12,7 +12,7 @@ import (
 )
 
 func claudeAuditSnapshot(observed, reset time.Time, used float64) quota.Snapshot {
-	return quota.Snapshot{Provider: "claude", AccountID: quota.ClaudeAccountID, ObservedAt: observed, Partial: true,
+	return quota.Snapshot{Provider: "claude", AccountID: "claude-account-hash", ObservedAt: observed, Partial: true,
 		Windows: []quota.Window{{ID: "claude:five_hour", UsedPercent: used, ResetsAt: reset, Duration: 5 * time.Hour}}}
 }
 
@@ -60,25 +60,29 @@ func TestConcurrentClaudeWindowsSurviveFirstEmailSetup(t *testing.T) {
 	assertStates(t, db, map[string]int{"pending": 2})
 }
 
-func TestClaudeCannotRegressOrReleaseItsRecordedWindow(t *testing.T) {
+// Claude readings now come straight from Claude Code, so the latest one is authoritative:
+// a lower percentage replaces the saved value, a same-reset drop does not release the reminder,
+// and a later reset (a new window) makes it due at once.
+func TestClaudeLatestReadingWinsAndNewWindowReleasesEarly(t *testing.T) {
 	ctx := context.Background()
 	db := openTestDB(t, t.TempDir())
 	must(t, db.SaveConfig(ctx, testConfig()))
 	now := storeTime()
 	reset := now.Add(2 * time.Hour)
 	must(t, db.RecordSnapshot(ctx, claudeAuditSnapshot(now, reset, 100), now))
-	must(t, db.RecordSnapshot(ctx, claudeAuditSnapshot(now, now.Add(time.Hour), 100), now))
 	must(t, db.RecordSnapshot(ctx, claudeAuditSnapshot(now, reset, 50), now))
 	saved, err := db.Snapshot(ctx, "claude")
 	must(t, err)
-	if saved.Windows[0].UsedPercent != 100 || !saved.Windows[0].ResetsAt.Equal(reset) {
-		t.Fatalf("older session replaced known exhaustion: %+v", saved)
+	if saved.Windows[0].UsedPercent != 50 {
+		t.Fatalf("latest reading did not replace the saved value: %+v", saved)
+	}
+	if _, err := db.Claim(ctx, now); !errors.Is(err, sql.ErrNoRows) {
+		t.Fatalf("a same-reset drop released the reminder early: %v", err)
 	}
 	must(t, db.RecordSnapshot(ctx, claudeAuditSnapshot(now, reset.Add(time.Hour), 3), now))
-	if _, err := db.Claim(ctx, now); !errors.Is(err, sql.ErrNoRows) {
-		t.Fatalf("Claude callback released a reminder early: %v", err)
+	if _, err := db.Claim(ctx, now); err != nil {
+		t.Fatalf("a new Claude window did not make the reminder due: %v", err)
 	}
-	assertStates(t, db, map[string]int{"pending": 1})
 }
 
 func TestNotificationChangeRecoversExpiredClaimWithoutRewritingOldPayload(t *testing.T) {

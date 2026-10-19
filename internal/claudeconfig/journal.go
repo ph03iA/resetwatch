@@ -3,7 +3,6 @@ package claudeconfig
 import (
 	"encoding/json"
 	"errors"
-	"os"
 	"path/filepath"
 	"strings"
 )
@@ -55,34 +54,4 @@ func validInstalledEntry(data json.RawMessage) bool {
 		return false
 	}
 	return entry.Type == "command" && strings.TrimSpace(entry.Command) != ""
-}
-
-func (i Installer) installBackup(doc document, installed json.RawMessage, replace bool) (journal, error) {
-	backup, err := i.readBackup()
-	if errors.Is(err, os.ErrNotExist) {
-		return i.newBackup(doc, installed, replace)
-	}
-	if err != nil {
-		return journal{}, err
-	}
-	if backup.owns(doc) || matchesEntry(doc, backup.HadEntry, backup.Original) {
-		backup.PreviousInstalled = nil
-		if !matchesEntry(doc, backup.HadEntry, backup.Original) && !matchesEntry(doc, true, installed) {
-			backup.PreviousInstalled = doc.fields["statusLine"]
-		}
-		backup.Installed = installed
-		return backup, nil
-	}
-	if !replace {
-		return journal{}, ErrConflict
-	}
-	return i.newBackup(doc, installed, true)
-}
-
-func (i Installer) newBackup(doc document, installed json.RawMessage, replace bool) (journal, error) {
-	original, present := doc.fields["statusLine"]
-	if present && !replace {
-		return journal{}, ErrConflict
-	}
-	return journal{Version: 1, SettingsPath: i.settingsPath(), HadEntry: present, Original: original, Installed: installed}, nil
 }

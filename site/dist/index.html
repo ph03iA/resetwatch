@@ -73,7 +73,7 @@
     <section class="how-section wrap" id="how-it-works" aria-labelledby="how-title">
       <div class="section-heading"><div><p class="section-label"><span>01</span> The process</p><h2 id="how-title">From limit<br><em>to reminder.</em></h2></div><p class="section-deck">A small process on your machine.<br>A reminder that survives a restart.</p></div>
       <ol class="lifecycle">
-        <li><span class="lifecycle-node" aria-hidden="true"></span><span class="lifecycle-source">Codex / Claude Code</span><h3>Read the window.</h3><p>Reads Codex through your local sign-in, or Claude through its status line. No inference requests.</p><span class="lifecycle-number" aria-hidden="true">01</span></li>
+        <li><span class="lifecycle-node" aria-hidden="true"></span><span class="lifecycle-source">Codex / Claude Code</span><h3>Read the window.</h3><p>Reads Codex and Claude Code through your local sign-ins, the same data their usage screens show. No inference requests.</p><span class="lifecycle-number" aria-hidden="true">01</span></li>
         <li><span class="lifecycle-node" aria-hidden="true"></span><span class="lifecycle-source">SQLite / local state</span><h3>Save the reminder.</h3><p>An exhausted window creates a saved alert. Pending reminders resume when the watcher restarts.</p><span class="lifecycle-number" aria-hidden="true">02</span></li>
         <li><span class="lifecycle-node" aria-hidden="true"></span><span class="lifecycle-source">Reset time / fresh check</span><h3>Check once more.</h3><p>At the recorded reset it checks Codex allowance when available. Claude reminders use the saved reset time and stay expected-only.</p><span class="lifecycle-number" aria-hidden="true">03</span></li>
         <li><span class="lifecycle-node lifecycle-node-last" aria-hidden="true"></span><span class="lifecycle-source">Resend / your inbox</span><h3>Send the context.</h3><p>The email says whether the reset is expected or fresh data confirms available allowance.</p><span class="lifecycle-number" aria-hidden="true">04</span></li>
@@ -95,7 +95,7 @@ go build ./cmd/resetwatch
             </div>
             <div class="install-step">
               <span class="step-index" aria-hidden="true">02</span>
-              <div class="step-copy"><h3>Run guided setup.</h3><p class="step-help">Choose Codex, Claude, or both. Setup asks for your reminder email and sender, and securely prompts for a missing Resend key.</p><p class="step-aside">Claude already has a custom status line? Setup asks before replacing it and saves the original entry.</p><p class="step-aside">Codex needs a subscription sign-in. If prompted, run <code>codex login</code> and retry.</p></div>
+              <div class="step-copy"><h3>Run guided setup.</h3><p class="step-help">Choose Codex, Claude, or both. Setup asks for your reminder email and sender, and securely prompts for a missing Resend key.</p><p class="step-aside">Claude needs the native Claude Code signed in with Pro or Max; no prompt is sent.</p><p class="step-aside">Codex needs a subscription sign-in. If prompted, run <code>codex login</code> and retry.</p></div>
               <div class="code-block"><div class="code-header"><span>Guided setup</span><button type="button" class="copy-button" data-copy="connect-command" aria-label="Copy guided setup command">Copy <svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M6 3H3v10h8v-3M6 1h7v8H6z" stroke="currentColor" stroke-width="1.5"/></svg></button></div><pre><code id="connect-command">.\resetwatch.exe setup</code></pre></div>
             </div>
             <div class="install-step">
@@ -116,9 +116,9 @@ go build ./cmd/resetwatch
         <dl class="specification-ledger">
           <div><dt>Setup &amp; choice</dt><dd>Choose Codex, Claude, or both in guided setup. A missing key is saved in this folder’s <code>.env</code>. Deselecting a provider cancels its unsent reminders.</dd></div>
           <div><dt>Uptime</dt><dd>Keep the watcher running on an awake, online computer. An always-on host needs its own Codex sign-in. There is no hosted scheduler.</dd></div>
-          <div><dt>Supported sign-in</dt><dd>Codex with a ChatGPT subscription, or Claude Pro/Max through Claude Code’s status line. API-key-only accounts do not expose the supported plan limits.</dd></div>
+          <div><dt>Supported sign-in</dt><dd>Codex with a ChatGPT subscription, or Claude Pro/Max through Claude Code. Claude usage relies on an experimental Claude Code request that may change. API-key-only accounts do not expose the supported plan limits.</dd></div>
           <div><dt>Your data</dt><dd>Quota snapshots, settings and alert history stay locally. Your recipient, sender and alert content go to Resend. The API key is read from your local <code>.env</code> file or environment, never saved in the database.</dd></div>
-          <div><dt>Reset evidence</dt><dd>Claude reminders describe expected resets. Codex confirmation requires fresh backend permission and allowance in every reported window. A reset time alone never proves access.</dd></div>
+          <div><dt>Reset evidence</dt><dd>Codex confirmation requires fresh backend permission; Claude confirmation requires a fresh reading. Both need allowance in every reported window. A reset time alone never proves access.</dd></div>
           <div><dt>Delivery & retries</dt><dd>A delivered alert means Resend accepted it; inbox placement is not guaranteed. Retries reuse one message key within bounded limits. Reset alerts older than 24 hours are cancelled.</dd></div>
           <div><dt>Account switches</dt><dd>One Codex account per state directory. Same-email workspace switches cannot be reliably distinguished; check quota after switching.</dd></div>
         </dl>

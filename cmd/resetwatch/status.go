@@ -5,7 +5,6 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
-	"slices"
 
 	"resetwatch/internal/quota"
 	"resetwatch/internal/store"
@@ -42,7 +41,7 @@ func (a *application) status(ctx context.Context, args []string) error {
 func (a *application) statusFlags(args []string) (statusOptions, error) {
 	var options statusOptions
 	flags := a.flags("status")
-	flags.BoolVar(&options.refresh, "refresh", false, "refresh selected Codex data; Claude uses callbacks")
+	flags.BoolVar(&options.refresh, "refresh", false, "read current limits before displaying")
 	flags.BoolVar(&options.json, "json", false, "machine-readable output")
 	flags.StringVar(&options.provider, "provider", "", "codex or claude")
 	flags.BoolVar(&options.all, "all", false, "show all selected providers (JSON is keyed by provider)")
@@ -90,18 +89,17 @@ func (a *application) statusAll(ctx context.Context, config store.Config, refres
 	if err != nil {
 		return err
 	}
-	if err := a.refreshStatusProviders(ctx, providers, refresh); err != nil {
-		return err
-	}
+	// A failed refresh still shows every saved reading; its error is returned afterwards.
+	refreshErr := a.refreshStatusProviders(ctx, providers, refresh)
 	readings, err := a.statusReadings(ctx, providers)
 	if err != nil {
-		return err
+		return errors.Join(refreshErr, err)
 	}
 	if asJSON {
-		return writeJSON(a.out, readings)
+		return errors.Join(writeJSON(a.out, readings), refreshErr)
 	}
 	a.renderStatusReadings(providers, readings)
-	return nil
+	return refreshErr
 }
 
 func (a *application) statusProviders(ctx context.Context, config store.Config) ([]string, error) {
@@ -120,10 +118,16 @@ func (a *application) statusProviders(ctx context.Context, config store.Config) 
 }
 
 func (a *application) refreshStatusProviders(ctx context.Context, providers []string, refresh bool) error {
-	if refresh && slices.Contains(providers, "codex") {
-		return a.refresh(ctx)
+	if !refresh {
+		return nil
 	}
-	return nil
+	var errs []error
+	for _, provider := range providers {
+		if err := a.refresh(ctx, provider); err != nil {
+			errs = append(errs, fmt.Errorf("%s refresh failed: %w", provider, err))
+		}
+	}
+	return errors.Join(errs...)
 }
 
 func (a *application) statusReadings(ctx context.Context, providers []string) (map[string]*quota.Snapshot, error) {

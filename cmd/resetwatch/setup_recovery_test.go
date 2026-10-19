@@ -18,13 +18,7 @@ func TestSetupRestoresDeselectedClaudeBeforeInitialCodexPersistenceFailure(t *te
 	if err := os.MkdirAll(filepath.Dir(settings), 0700); err != nil {
 		t.Fatal(err)
 	}
-	original := `{"statusLine":{"type":"command","command":"original-display"},"theme":"dark"}`
-	if err := os.WriteFile(settings, []byte(original), 0600); err != nil {
-		t.Fatal(err)
-	}
-	if err := app.run(context.Background(), append(setupTestArguments("claude"), "--replace-statusline")); err != nil {
-		t.Fatal(err)
-	}
+	installOldClaudeStatusLine(t, app, []byte(`{"statusLine":{"type":"command","command":"original-display"},"theme":"dark"}`))
 	binary := setupTestCodex(t, app)
 	app.setupReadCodex = func(context.Context, string) (quota.Snapshot, error) {
 		db, err := sql.Open("sqlite", filepath.Join(app.getenv("RESETWATCH_HOME"), "state.db"))
@@ -36,7 +30,7 @@ func TestSetupRestoresDeselectedClaudeBeforeInitialCodexPersistenceFailure(t *te
 		return setupTestSnapshot("codex"), err
 	}
 	err := app.run(context.Background(), append(setupTestArguments("codex"), "--codex-bin", binary))
-	if err == nil || !strings.Contains(err.Error(), "setup saved; initial Codex reading") {
+	if err == nil || !strings.Contains(err.Error(), "setup saved; initial codex reading") {
 		t.Fatalf("expected saved setup with failed initial reading: %v", err)
 	}
 	assertSetupConfig(t, app, "codex")

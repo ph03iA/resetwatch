@@ -368,7 +368,6 @@ Measured every changed/new production function against `7216008` using gocyclo; 
 | main.(*application).statusSnapshot | 9 | 9 |
 | main.(setupPrompter).choose | New | 9 |
 | store.schedule | 8 | 9 |
-| claudeconfig.(Installer).installBackup | New | 8 |
 | claudeconfig.writeDocument | New | 8 |
 | main.(*application).prepareSetupProvider | New | 8 |
 | main.readEnvSnapshot | New | 8 |
@@ -387,7 +386,6 @@ Measured every changed/new production function against `7216008` using gocyclo; 
 | store.(Config).Selected | New | 7 |
 | store.scheduleSaved | 5 | 7 |
 | watch.(*Engine).sendAlert | 6 | 7 |
-| claudeconfig.(Installer).applyInstall | New | 6 |
 | claudeconfig.(Installer).readBackup | New | 6 |
 | claudeconfig.(Installer).validate | New | 6 |
 | claudeconfig.readRegular | New | 6 |
@@ -405,7 +403,6 @@ Measured every changed/new production function against `7216008` using gocyclo; 
 | main.saveResendEnv | New | 6 |
 | quota.npmCodexBinary | New | 6 |
 | store.configureState | New | 6 |
-| claudeconfig.(Installer).Install | New | 5 |
 | claudeconfig.(journal).validEntries | New | 5 |
 | claudeconfig.checkDirectory | New | 5 |
 | claudeconfig.matchesEntry | New | 5 |
@@ -425,7 +422,6 @@ Measured every changed/new production function against `7216008` using gocyclo; 
 | main.sameEnvSnapshot | New | 5 |
 | store.(*DB).Claim | 2 | 5 |
 | store.(*DB).EnableProvider | New | 5 |
-| claudeconfig.statusEntry | New | 4 |
 | localfile.prepare | New | 4 |
 | localfile.regularTarget | New | 4 |
 | main.(*application).codexProvider | 2 | 4 |
@@ -450,9 +446,7 @@ Measured every changed/new production function against `7216008` using gocyclo; 
 | store.retrySelected | New | 4 |
 | store.scheduleWindow | 4 | 4 |
 | watch.(*Engine).Step | 3 | 4 |
-| claudeconfig.(Installer).newBackup | New | 3 |
 | claudeconfig.(Installer).restoreEntry | New | 3 |
-| claudeconfig.(Installer).saveBackup | New | 3 |
 | claudeconfig.(journal).owns | New | 3 |
 | claudeconfig.validInstalledEntry | New | 3 |
 | localfile.replace [replace_other.go] | New | 3 |
@@ -471,9 +465,6 @@ Measured every changed/new production function against `7216008` using gocyclo; 
 | watch.(*Engine).Observe | 3 | 1 |
 | watch.(*Engine).cycleProvider | New | 3 |
 | watch.(*Engine).observe | New | 3 |
-| claudeconfig.encodePowerShell | New | 2 |
-| claudeconfig.ensureDirectory | New | 2 |
-| claudeconfig.launcherForOS | New | 2 |
 | main.(*application).help | 2 | 2 |
 | main.(*application).readSetupCodex | New | 2 |
 | main.(*application).setupFlags | New | 2 |
@@ -483,10 +474,8 @@ Measured every changed/new production function against `7216008` using gocyclo; 
 | quota.DiscoverBinary | New | 2 |
 | store.(Config).withProvider | New | 2 |
 | claudeconfig.(Installer).backupPath | New | 1 |
-| claudeconfig.(Installer).launcher | New | 1 |
+| quota.ClaudeWindowDuration | New | 1 |
 | claudeconfig.(Installer).settingsPath | New | 1 |
-| claudeconfig.powershellQuote | New | 1 |
-| claudeconfig.shellQuote | New | 1 |
 | store.cancelDisabled | New | 1 |
 | store.cancelMovedAlert | New | 1 |
 | store.failExhausted | New | 1 |
@@ -518,3 +507,30 @@ Behavior verified: the sender regression failed for bare and angle-only addresse
 | main.(setupPrompter).ask | 5 | 4 |
 
 Removed only the bracketed default display from the shared prompt writer. Email, sender, numeric choices and confirmations retain their input handling, including blank-input defaults and cancellation. No helpers were extracted. CLI race tests and vet passed; the prompt regression checks that the saved email, `[3]` and `[n]` are absent from the output.
+
+## Claude usage through Claude Code — 2026-10-19
+
+Claude readings now come from Claude Code's experimental `get_usage` control request (no prompt sent) instead of status-line callbacks. New: `quota.Claude` (`claude.go`, `claude_rpc.go`), multi-provider polling in the watcher, `keepOmittedWindows` for partial readings, and status-line restoration in setup and `connect claude`. Removed: status-line decoding, the Claude merge, the install path in setup, and the guard that retired confirmed Claude payloads.
+
+| Function | Before CC | After CC |
+| --- | ---: | ---: |
+| quota.decodeClaudeUsage | New | 9 |
+| store.keepOmittedWindows | New | 8 |
+| store.(*DB).RecordSnapshot | 7 | 8 |
+| quota.(*claudeSession).request | New | 7 |
+| main.(*application).statusSnapshot | 9 | 7 |
+| main.(*application).activateSetup | 9 | 7 |
+| quota.claudeWindowAt | 5 | 6 |
+| quota.(Claude).Read | New | 6 |
+| main.(*application).prepareSetupProviders | 7 | 6 |
+| quota.startClaude | New | 5 |
+| watch.(*Engine).sendAlert | 7 | 5 |
+| watch.(*Engine).Step | 4 | 5 |
+| main.(*application).connectClaude | 6 | 4 |
+| watch.(*Engine).cycleProviders | New (replaces cycleProvider, 3) | 4 |
+| main.(*application).claudeStatusLine | 5 | 1 |
+| store.mergeClaude | 7 | Removed |
+| quota.DecodeClaudeStatusLine | 7 | Removed |
+| main.(*application).installSetupClaude | 5 | Removed |
+
+Behavior verified: full suite and `go test -race` (64-bit build) pass; `gocyclo -over 10 cmd internal` passes. A built binary ran `connect claude` and `status --provider claude --refresh` against a real Claude Code 2.1.301 Pro sign-in (no prompt, throwaway state); tests use a fake Claude Code process and never reach a real account.

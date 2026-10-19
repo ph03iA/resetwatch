@@ -81,7 +81,7 @@ func (a *application) configure(ctx context.Context, args []string) error {
 
 var noReadings = map[string]string{
 	"codex":  "no connected account; run resetwatch connect codex",
-	"claude": "no Claude readings yet; set resetwatch claude-statusline as your Claude Code status line and use Claude Code",
+	"claude": "no Claude readings yet; run resetwatch connect claude",
 }
 
 // statusSnapshot picks the provider to show and returns its saved reading, refreshing Codex on request.
@@ -96,11 +96,8 @@ func (a *application) statusSnapshot(ctx context.Context, provider string, refre
 	if noReadings[provider] == "" {
 		return quota.Snapshot{}, errors.New("provider must be codex or claude")
 	}
-	if refresh && provider == "claude" {
-		return quota.Snapshot{}, errors.New("Claude readings arrive from Claude Code's status line; use Claude Code to update them")
-	}
 	if refresh {
-		if err := a.refresh(ctx); err != nil {
+		if err := a.refresh(ctx, provider); err != nil {
 			return quota.Snapshot{}, err
 		}
 	}
@@ -111,13 +108,16 @@ func (a *application) statusSnapshot(ctx context.Context, provider string, refre
 	return snapshot, err
 }
 
-func (a *application) refresh(ctx context.Context) error {
+func (a *application) refresh(ctx context.Context, provider string) error {
 	config, err := a.db.Config(ctx)
 	if err != nil {
 		return err
 	}
-	engine := watch.Engine{DB: a.db, Provider: quota.Codex{Binary: config.CodexBin, Timeout: 15 * time.Second, Version: version}}
-	_, err = engine.Observe(ctx)
+	var reader quota.Provider = quota.Codex{Binary: config.CodexBin, Timeout: 15 * time.Second, Version: version}
+	if provider == "claude" {
+		reader = a.claudeReader()
+	}
+	_, err = (&watch.Engine{DB: a.db, Provider: reader}).Observe(ctx)
 	return err
 }
 
@@ -166,10 +166,20 @@ func (a *application) watch(ctx context.Context, args []string) error {
 	if err != nil {
 		return err
 	}
-	engine := watch.Engine{DB: a.db, ProviderFactory: func(current store.Config) quota.Provider { return a.codexProvider(ctx, current) },
+	engine := watch.Engine{DB: a.db, ProviderFactory: func(current store.Config) []quota.Provider { return a.watchProviders(ctx, current) },
 		Sender: notify.Resend{APIKey: key}, Log: func(message string) { fmt.Fprintln(a.errOut, time.Now().Format(time.RFC3339), message) }}
 	fmt.Fprintln(a.errOut, "Watching reset windows. Ctrl+C stops safely.")
 	return engine.Run(ctx, *interval, *once)
+}
+
+func (a *application) watchProviders(ctx context.Context, config store.Config) []quota.Provider {
+	var providers []quota.Provider
+	for _, provider := range []quota.Provider{a.codexProvider(ctx, config), a.claudeProvider(ctx, config)} {
+		if provider != nil {
+			providers = append(providers, provider)
+		}
+	}
+	return providers
 }
 
 // codexProvider polls Codex only once it has been connected, so a Claude-only setup does not log a failure every cycle.

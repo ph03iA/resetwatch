@@ -21,7 +21,7 @@ func TestDeliveryRejectsStaleClaimBeforeSending(t *testing.T) {
 	must(t, err)
 	var logs []string
 	engine.Log = func(message string) { logs = append(logs, message) }
-	err = engine.deliver(ctx, first, nil)
+	err = engine.deliver(ctx, first)
 	if !errors.Is(err, sql.ErrNoRows) {
 		t.Fatalf("stale claim did not return the freeze error: %v", err)
 	}
@@ -54,7 +54,7 @@ func TestDeliveryReturnsLeaseLossBeforeLoggingOutcome(t *testing.T) {
 			})
 			var logs []string
 			engine.Log = func(message string) { logs = append(logs, message) }
-			err := engine.deliver(ctx, first, nil)
+			err := engine.deliver(ctx, first)
 			if err == nil || !strings.Contains(err.Error(), "lease was lost") {
 				t.Fatalf("delivery did not return the completion error: %v", err)
 			}

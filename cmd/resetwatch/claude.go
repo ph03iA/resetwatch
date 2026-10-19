@@ -2,41 +2,68 @@ package main
 
 import (
 	"context"
-	"errors"
 	"fmt"
-	"strings"
+	"io"
 	"time"
 
 	"resetwatch/internal/quota"
+	"resetwatch/internal/store"
+	"resetwatch/internal/watch"
 )
 
-var claudeWindowNames = map[string]string{"claude:five_hour": "5h", "claude:seven_day": "7d"}
-
-// claudeStatusLine runs as the Claude Code status line command: it records new plan usage
-// from the JSON on stdin, schedules reset reminders, and prints a short summary.
-func (a *application) claudeStatusLine(ctx context.Context, args []string) error {
-	if err := noArguments(args); err != nil {
-		return err
-	}
-	now := time.Now().UTC()
-	reading, err := quota.DecodeClaudeStatusLine(a.in, now)
-	if errors.Is(err, quota.ErrNoClaudeLimits) {
-		return nil // nothing to record yet; keep the status line empty
-	}
-	if err != nil {
-		return err
-	}
-	if err := a.db.RecordSnapshot(ctx, reading, now); err != nil {
-		return err
-	}
-	fmt.Fprintln(a.out, claudeSummary(reading))
+// claudeStatusLine is a silent no-op so Claude Code status lines installed by older versions show
+// nothing instead of an error; connect claude and setup restore the original status line.
+// shortcut: keeps a retired command alive; remove once older installs have had time to reconnect.
+func (a *application) claudeStatusLine(args []string) error {
+	_, _ = io.Copy(io.Discard, a.in)
 	return nil
 }
 
-func claudeSummary(reading quota.Snapshot) string {
-	parts := make([]string, 0, len(reading.Windows))
-	for _, window := range reading.Windows {
-		parts = append(parts, fmt.Sprintf("%s %.0f%%", claudeWindowNames[window.ID], window.UsedPercent))
+// claudeReader returns the Claude usage reader; tests replace it.
+func (a *application) claudeReader() quota.Provider {
+	if a.claude != nil {
+		return a.claude
 	}
-	return "Claude " + strings.Join(parts, " · ")
+	return quota.Claude{Timeout: 20 * time.Second}
+}
+
+func (a *application) connectClaude(ctx context.Context, args []string) error {
+	if err := noArguments(args); err != nil {
+		return err
+	}
+	engine := watch.Engine{DB: a.db, Provider: a.claudeReader()}
+	if _, err := engine.Observe(ctx); err != nil {
+		return fmt.Errorf("connect Claude: %w", err)
+	}
+	if err := a.db.EnableProvider(ctx, "claude"); err != nil {
+		return fmt.Errorf("Claude reading saved, but provider could not be enabled; rerun connect claude: %w", err)
+	}
+	fmt.Fprintln(a.out, "Connected to Claude. Usage is read from Claude Code without sending any prompt.")
+	a.restoreClaudeStatusLine(ctx)
+	fmt.Fprintln(a.out, "Provider changes apply on the next watcher cycle.")
+	return nil
+}
+
+// restoreClaudeStatusLine puts back the status line older versions replaced; it does nothing otherwise.
+func (a *application) restoreClaudeStatusLine(ctx context.Context) {
+	installer, err := a.claudeInstaller()
+	if err == nil {
+		err = installer.Restore(ctx)
+	}
+	if err != nil {
+		fmt.Fprintln(a.errOut, "Could not restore your previous Claude status line:", err)
+	}
+}
+
+// claudeProvider polls Claude when selected; legacy configurations poll only once Claude was connected.
+func (a *application) claudeProvider(ctx context.Context, config store.Config) quota.Provider {
+	if !config.Selected("claude") {
+		return nil
+	}
+	if config.Providers == "" {
+		if _, err := a.db.Snapshot(ctx, "claude"); err != nil {
+			return nil
+		}
+	}
+	return a.claudeReader()
 }

@@ -1,11 +1,9 @@
 package watch
 
 import (
-	"context"
 	"testing"
 	"time"
 
-	"resetwatch/internal/notify"
 	"resetwatch/internal/quota"
 )
 
@@ -32,36 +30,45 @@ func TestCodexConfirmationRequiresExplicitBackendPermission(t *testing.T) {
 	}
 }
 
-func TestClaudeCallbackCannotConfirmAllowance(t *testing.T) {
+// Claude readings are pulled from Claude Code, so fresh data below 100% confirms the reset; stale data does not.
+func TestFreshClaudeReadingConfirmsReset(t *testing.T) {
 	now := watchTime()
-	snapshot := watchSnapshot(now, now.Add(time.Hour), 10)
-	snapshot.Provider = "claude"
 	alert := composeAlert(now.Add(-time.Minute))
 	alert.Provider = "claude"
-	if compose(alert, &snapshot, now).Confirmed {
-		t.Fatal("receipt of a Claude callback was treated as verified fresh allowance")
+	for _, test := range []struct {
+		observed time.Time
+		want     bool
+	}{{now, true}, {now.Add(-3 * time.Minute), false}} {
+		snapshot := watchSnapshot(test.observed, now.Add(5*time.Hour), 10)
+		snapshot.Provider = "claude"
+		if got := compose(alert, &snapshot, now).Confirmed; got != test.want {
+			t.Fatalf("reading observed %s: Confirmed=%v, want %v", now.Sub(test.observed), got, test.want)
+		}
 	}
 }
 
-func TestOldFrozenClaudeConfirmationIsRetiredWithoutSending(t *testing.T) {
-	engine, _, sender, now := testEngine(t)
-	engine.Provider = nil
-	ctx := context.Background()
-	snapshot := watchSnapshot(*now, now.Add(time.Hour), 100)
-	snapshot.Provider, snapshot.AccountID = "claude", quota.ClaudeAccountID
-	must(t, engine.DB.RecordSnapshot(ctx, snapshot, *now))
-	*now = now.Add(time.Hour)
-	alert, err := engine.DB.Claim(ctx, *now)
-	must(t, err)
-	_, err = engine.DB.FreezeMessage(ctx, alert, notify.Message{Key: alert.ID, To: alert.To, From: alert.From,
-		Provider: "claude", Window: alert.Window, ResetAt: alert.ResetAt, Confirmed: true})
-	must(t, err)
-	must(t, engine.DB.Finish(ctx, alert, "retry", "synthetic interruption", *now, *now))
-	must(t, engine.Step(ctx))
-	if len(sender.messages) != 0 {
-		t.Fatal("a pre-fix confirmed Claude payload bypassed the current expected-only policy")
+// After a reset Claude leaves the window out until it is used again; a fresh reading without it confirms
+// the reset and still names the window, but a weekly limit at 100% blocks the confirmation.
+func TestMissingClaudeWindowAfterResetConfirms(t *testing.T) {
+	now := watchTime()
+	alert := composeAlert(now.Add(-time.Minute))
+	alert.Provider, alert.Window = "claude", "claude:five_hour"
+	for _, test := range []struct {
+		weeklyUsed float64
+		want       bool
+	}{{34, true}, {100, false}} {
+		snapshot := &quota.Snapshot{Provider: "claude", AccountID: "account-hash", ObservedAt: now,
+			Windows: []quota.Window{{ID: "claude:seven_day", UsedPercent: test.weeklyUsed, Duration: 7 * 24 * time.Hour, ResetsAt: now.Add(48 * time.Hour)}}}
+		m := compose(alert, snapshot, now)
+		if m.Confirmed != test.want || m.Duration != 5*time.Hour {
+			t.Fatalf("weekly %v%%: Confirmed=%v Duration=%v, want %v and 5h", test.weeklyUsed, m.Confirmed, m.Duration, test.want)
+		}
 	}
-	assertHistory(t, engine.DB, "cancelled", 2)
+	codex := watchSnapshot(now, now.Add(time.Hour), 10)
+	codex.Windows = nil
+	if compose(composeAlert(now.Add(-time.Minute)), &codex, now).Confirmed {
+		t.Fatal("a missing Codex window must not confirm the reset")
+	}
 }
 
 // A window still at 100% must be named in the email even when the reset cannot be confirmed.

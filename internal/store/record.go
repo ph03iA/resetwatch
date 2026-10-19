@@ -4,7 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
-	"sort"
+	"slices"
 	"time"
 
 	"resetwatch/internal/quota"
@@ -26,9 +26,10 @@ func (d *DB) RecordSnapshot(ctx context.Context, snapshot quota.Snapshot, now ti
 		return err
 	}
 	defer tx.Rollback()
-	snapshot, err = recordingSnapshot(ctx, tx, snapshot, now)
-	if err != nil {
-		return err
+	if snapshot.Partial {
+		if snapshot, err = keepOmittedWindows(ctx, tx, snapshot, now); err != nil {
+			return err
+		}
 	}
 	if err := saveSnapshot(ctx, tx, snapshot); err != nil {
 		return err
@@ -43,49 +44,23 @@ func (d *DB) RecordSnapshot(ctx context.Context, snapshot quota.Snapshot, now ti
 	return tx.Commit()
 }
 
-func recordingSnapshot(ctx context.Context, tx *sql.Tx, snapshot quota.Snapshot, now time.Time) (quota.Snapshot, error) {
-	if snapshot.Provider != "claude" {
+// keepOmittedWindows carries over saved windows a partial reading left out, until they reset.
+// Windows present in the reading always replace their saved values.
+func keepOmittedWindows(ctx context.Context, tx *sql.Tx, snapshot quota.Snapshot, now time.Time) (quota.Snapshot, error) {
+	saved, err := loadSnapshot(ctx, tx, snapshot.Provider)
+	if errors.Is(err, sql.ErrNoRows) || (err == nil && saved.AccountID != snapshot.AccountID) {
 		return snapshot, nil
 	}
-	saved, err := loadSnapshot(ctx, tx, "claude")
-	if err != nil && !errors.Is(err, sql.ErrNoRows) {
-		return quota.Snapshot{}, err
+	if err != nil {
+		return snapshot, err
 	}
-	return mergeClaude(saved, snapshot, now), nil
-}
-
-// Claude windows are independent and session callbacks can arrive out of order.
-func mergeClaude(saved, incoming quota.Snapshot, now time.Time) quota.Snapshot {
-	windows := make(map[string]quota.Window)
+	windows := slices.Clone(snapshot.Windows)
 	for _, window := range saved.Windows {
-		if window.ResetsAt.After(now) {
-			windows[window.ID] = window
+		reported := slices.ContainsFunc(snapshot.Windows, func(w quota.Window) bool { return w.ID == window.ID })
+		if !reported && window.ResetsAt.After(now) {
+			windows = append(windows, window)
 		}
 	}
-	for _, window := range incoming.Windows {
-		if newerClaudeWindow(windows[window.ID], window) {
-			windows[window.ID] = window
-		}
-	}
-	ids := make([]string, 0, len(windows))
-	for id := range windows {
-		ids = append(ids, id)
-	}
-	sort.Strings(ids)
-	incoming.Partial = true
-	incoming.Windows = make([]quota.Window, 0, len(ids))
-	for _, id := range ids {
-		incoming.Windows = append(incoming.Windows, windows[id])
-	}
-	return incoming
-}
-
-func newerClaudeWindow(saved, incoming quota.Window) bool {
-	if incoming.ResetsAt.Before(saved.ResetsAt) {
-		return false
-	}
-	if incoming.ResetsAt.Equal(saved.ResetsAt) {
-		return incoming.UsedPercent > saved.UsedPercent
-	}
-	return true
+	snapshot.Windows = windows
+	return snapshot, nil
 }

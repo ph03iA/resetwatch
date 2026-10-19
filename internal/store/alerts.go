@@ -116,9 +116,6 @@ func scheduleWindow(ctx context.Context, tx *sql.Tx, snapshot quota.Snapshot, wi
 // provider reports allowance back in a new window before the recorded reset time.
 // Only a later reset time proves a new window began; a lower percentage alone may be an old reading.
 func releaseEarlyReset(ctx context.Context, tx *sql.Tx, snapshot quota.Snapshot, window quota.Window, now time.Time) error {
-	if snapshot.Provider == "claude" {
-		return nil // a status-line callback cannot prove fresh allowance
-	}
 	resetAt := min(snapshot.ObservedAt.Unix(), now.Unix())
 	_, err := tx.ExecContext(ctx, `UPDATE alerts SET reset_at=?,next_attempt=?,updated_at=?
  WHERE provider=? AND account_id=? AND window_id=? AND reset_at>? AND reset_at<? AND state IN ('pending','retry')`,

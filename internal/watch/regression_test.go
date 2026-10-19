@@ -176,7 +176,7 @@ func TestDeliveryFailsClosedWhenSettingsCannotBeRead(t *testing.T) {
 	must(t, err)
 	sender := &fakeSender{}
 	engine := Engine{DB: db, Sender: sender, Now: func() time.Time { return now }}
-	err = engine.deliver(ctx, alert, nil)
+	err = engine.deliver(ctx, alert)
 	var syntaxError *json.SyntaxError
 	if !errors.As(err, &syntaxError) {
 		t.Fatalf("settings read error was hidden: %v", err)

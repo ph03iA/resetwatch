@@ -10,26 +10,24 @@ import (
 	"strings"
 
 	"golang.org/x/term"
-	"resetwatch/internal/claudeconfig"
 	"resetwatch/internal/quota"
 	"resetwatch/internal/store"
 )
 
 type setupOptions struct {
 	providers, email, from, binary string
-	nonInteractive, replace, test  bool
+	nonInteractive, test           bool
 	provided                       map[string]bool
 }
 
 type setupState struct {
-	options                           setupOptions
-	previous                          store.Config
-	prompt                            setupPrompter
-	interactive                       bool
-	newKey                            string
-	reading                           *quota.Snapshot
-	installer                         claudeconfig.Installer
-	installed, activated, emailTested bool
+	options                setupOptions
+	previous               store.Config
+	prompt                 setupPrompter
+	interactive            bool
+	newKey                 string
+	readings               []quota.Snapshot
+	activated, emailTested bool
 }
 
 func (a *application) setup(ctx context.Context, args []string) error {
@@ -45,7 +43,6 @@ func (a *application) setup(ctx context.Context, args []string) error {
 	s.prompt = setupPrompter{in: a.in, out: a.out, secret: a.setupPassword, ctx: ctx}
 	restore := a.restoreSetupTerminal()
 	defer restore()
-	defer a.reportUnfinishedSetup(&s)
 	fmt.Fprintln(a.out, "ResetWatch setup")
 	if err := a.collectSetup(&s); err != nil {
 		return err
@@ -69,7 +66,6 @@ func (a *application) setupFlags(args []string, config store.Config) (setupOptio
 	flags.StringVar(&options.from, "from", config.From, "Resend sender (default: onboarding@resend.dev)")
 	flags.StringVar(&options.binary, "codex-bin", config.CodexBin, "native Codex executable path")
 	flags.BoolVar(&options.nonInteractive, "non-interactive", false, "never ask questions")
-	flags.BoolVar(&options.replace, "replace-statusline", false, "replace an existing Claude status line")
 	flags.BoolVar(&options.test, "test-email", false, "send one labeled test after setup")
 	if err := flags.Parse(args); err != nil {
 		return options, err
@@ -181,12 +177,6 @@ func (a *application) confirmSetupDisabling(s *setupState) error {
 		return errSetupCancelled
 	}
 	return nil
-}
-
-func (a *application) reportUnfinishedSetup(s *setupState) {
-	if s.installed && !s.activated {
-		fmt.Fprintln(a.errOut, "Claude's status line was installed, but the saved setup was not activated. Rerun setup to finish; the original status line backup is retained.")
-	}
 }
 
 // Restore console echo even if a password read is interrupted while its goroutine exits.

@@ -180,3 +180,19 @@ func TestConnectClaudeRecordsReadingAndEnablesProvider(t *testing.T) {
 		t.Fatal("connect claude must fail when Claude reports no plan limits")
 	}
 }
+
+// One provider failing to refresh must not hide the other's saved reading.
+func TestStatusRefreshShowsReadingsWhenOneProviderFails(t *testing.T) {
+	app, _ := testApplication(t)
+	claudeLine(t, app, "", map[string][2]int64{"five_hour": {30, time.Now().Add(time.Hour).Unix()}})
+	config := store.Config{Providers: "both", To: "p@example.test", From: "a@example.test", CodexBin: `Z:\missing\codex.exe`}
+	if err := auditStateDB(t, app).ConfigureSetup(context.Background(), config, time.Now().UTC()); err != nil {
+		t.Fatal(err)
+	}
+	app.out = &strings.Builder{}
+	err := app.run(context.Background(), []string{"status", "--refresh"})
+	out := app.out.(*strings.Builder).String()
+	if err == nil || !strings.Contains(err.Error(), "codex refresh failed") || !strings.Contains(out, "claude:five_hour") {
+		t.Fatalf("want the Codex error and the Claude reading; err %v, output %q", err, out)
+	}
+}

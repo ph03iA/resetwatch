@@ -89,18 +89,17 @@ func (a *application) statusAll(ctx context.Context, config store.Config, refres
 	if err != nil {
 		return err
 	}
-	if err := a.refreshStatusProviders(ctx, providers, refresh); err != nil {
-		return err
-	}
+	// A failed refresh still shows every saved reading; its error is returned afterwards.
+	refreshErr := a.refreshStatusProviders(ctx, providers, refresh)
 	readings, err := a.statusReadings(ctx, providers)
 	if err != nil {
-		return err
+		return errors.Join(refreshErr, err)
 	}
 	if asJSON {
-		return writeJSON(a.out, readings)
+		return errors.Join(writeJSON(a.out, readings), refreshErr)
 	}
 	a.renderStatusReadings(providers, readings)
-	return nil
+	return refreshErr
 }
 
 func (a *application) statusProviders(ctx context.Context, config store.Config) ([]string, error) {
@@ -122,12 +121,13 @@ func (a *application) refreshStatusProviders(ctx context.Context, providers []st
 	if !refresh {
 		return nil
 	}
+	var errs []error
 	for _, provider := range providers {
 		if err := a.refresh(ctx, provider); err != nil {
-			return err
+			errs = append(errs, fmt.Errorf("%s refresh failed: %w", provider, err))
 		}
 	}
-	return nil
+	return errors.Join(errs...)
 }
 
 func (a *application) statusReadings(ctx context.Context, providers []string) (map[string]*quota.Snapshot, error) {

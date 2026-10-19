@@ -14,6 +14,6 @@ For every refactor report a table of function, before CC, and after CC; name ext
 
 ## Product boundaries
 
-Never send test emails to real recipients or run inference while checking quota. Use documented provider interfaces and local Codex sign-in; do not read or print auth tokens. Keep simulated UI/demo data labeled. Fresh confirmed allowance and a previously scheduled reset are different claims.
+Never send test emails to real recipients or run inference while checking quota. Use documented provider interfaces and local Codex or Claude Code sign-in; do not read or print auth tokens. One owner-approved exception: Claude usage comes from Claude Code's experimental `get_usage` control request (the data behind `/usage`, as used by the Claude Agent SDK), with no prompt sent. Keep it isolated in `internal/quota/claude*.go` and keep its risk documented. Keep simulated UI/demo data labeled. Fresh confirmed allowance and a previously scheduled reset are different claims.
 
 No invented releases, repository URLs, adoption figures, or unsupported providers. Website installation instructions must match the built CLI. State production delivery limitations honestly.

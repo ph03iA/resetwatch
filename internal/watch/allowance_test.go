@@ -1,11 +1,9 @@
 package watch
 
 import (
-	"context"
 	"testing"
 	"time"
 
-	"resetwatch/internal/notify"
 	"resetwatch/internal/quota"
 )
 
@@ -32,36 +30,21 @@ func TestCodexConfirmationRequiresExplicitBackendPermission(t *testing.T) {
 	}
 }
 
-func TestClaudeCallbackCannotConfirmAllowance(t *testing.T) {
+// Claude readings are pulled from Claude Code, so fresh data below 100% confirms the reset; stale data does not.
+func TestFreshClaudeReadingConfirmsReset(t *testing.T) {
 	now := watchTime()
-	snapshot := watchSnapshot(now, now.Add(time.Hour), 10)
-	snapshot.Provider = "claude"
 	alert := composeAlert(now.Add(-time.Minute))
 	alert.Provider = "claude"
-	if compose(alert, &snapshot, now).Confirmed {
-		t.Fatal("receipt of a Claude callback was treated as verified fresh allowance")
+	for _, test := range []struct {
+		observed time.Time
+		want     bool
+	}{{now, true}, {now.Add(-3 * time.Minute), false}} {
+		snapshot := watchSnapshot(test.observed, now.Add(5*time.Hour), 10)
+		snapshot.Provider = "claude"
+		if got := compose(alert, &snapshot, now).Confirmed; got != test.want {
+			t.Fatalf("reading observed %s: Confirmed=%v, want %v", now.Sub(test.observed), got, test.want)
+		}
 	}
-}
-
-func TestOldFrozenClaudeConfirmationIsRetiredWithoutSending(t *testing.T) {
-	engine, _, sender, now := testEngine(t)
-	engine.Provider = nil
-	ctx := context.Background()
-	snapshot := watchSnapshot(*now, now.Add(time.Hour), 100)
-	snapshot.Provider, snapshot.AccountID = "claude", quota.ClaudeAccountID
-	must(t, engine.DB.RecordSnapshot(ctx, snapshot, *now))
-	*now = now.Add(time.Hour)
-	alert, err := engine.DB.Claim(ctx, *now)
-	must(t, err)
-	_, err = engine.DB.FreezeMessage(ctx, alert, notify.Message{Key: alert.ID, To: alert.To, From: alert.From,
-		Provider: "claude", Window: alert.Window, ResetAt: alert.ResetAt, Confirmed: true})
-	must(t, err)
-	must(t, engine.DB.Finish(ctx, alert, "retry", "synthetic interruption", *now, *now))
-	must(t, engine.Step(ctx))
-	if len(sender.messages) != 0 {
-		t.Fatal("a pre-fix confirmed Claude payload bypassed the current expected-only policy")
-	}
-	assertHistory(t, engine.DB, "cancelled", 2)
 }
 
 // A window still at 100% must be named in the email even when the reset cannot be confirmed.

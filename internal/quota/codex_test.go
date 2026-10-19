@@ -18,6 +18,10 @@ func TestMain(tests *testing.M) {
 		serveFakeCodex(mode)
 		os.Exit(0)
 	}
+	if mode := os.Getenv("RESETWATCH_CLAUDE_HELPER"); mode != "" {
+		serveFakeClaude(mode)
+		os.Exit(0)
+	}
 	os.Exit(tests.Run())
 }
 

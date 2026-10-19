@@ -518,3 +518,30 @@ Behavior verified: the sender regression failed for bare and angle-only addresse
 | main.(setupPrompter).ask | 5 | 4 |
 
 Removed only the bracketed default display from the shared prompt writer. Email, sender, numeric choices and confirmations retain their input handling, including blank-input defaults and cancellation. No helpers were extracted. CLI race tests and vet passed; the prompt regression checks that the saved email, `[3]` and `[n]` are absent from the output.
+
+## Claude usage through Claude Code — 2026-10-19
+
+Claude readings now come from Claude Code's experimental `get_usage` control request (no prompt sent) instead of status-line callbacks. New: `quota.Claude` (`claude.go`, `claude_rpc.go`), multi-provider polling in the watcher, `keepOmittedWindows` for partial readings, and status-line restoration in setup and `connect claude`. Removed: status-line decoding, the Claude merge, the install path in setup, and the guard that retired confirmed Claude payloads.
+
+| Function | Before CC | After CC |
+| --- | ---: | ---: |
+| quota.decodeClaudeUsage | New | 9 |
+| store.keepOmittedWindows | New | 8 |
+| store.(*DB).RecordSnapshot | 7 | 8 |
+| quota.(*claudeSession).request | New | 7 |
+| main.(*application).statusSnapshot | 9 | 7 |
+| main.(*application).activateSetup | 9 | 7 |
+| quota.claudeWindowAt | 5 | 6 |
+| quota.(Claude).Read | New | 6 |
+| main.(*application).prepareSetupProviders | 7 | 6 |
+| quota.startClaude | New | 5 |
+| watch.(*Engine).sendAlert | 7 | 5 |
+| watch.(*Engine).Step | 4 | 5 |
+| main.(*application).connectClaude | 6 | 4 |
+| watch.(*Engine).cycleProviders | New (replaces cycleProvider, 3) | 4 |
+| main.(*application).claudeStatusLine | 5 | 1 |
+| store.mergeClaude | 7 | Removed |
+| quota.DecodeClaudeStatusLine | 7 | Removed |
+| main.(*application).installSetupClaude | 5 | Removed |
+
+Behavior verified: full suite and `go test -race` (64-bit build) pass; `gocyclo -over 10 cmd internal` passes. A built binary ran `connect claude` and `status --provider claude --refresh` against a real Claude Code 2.1.301 Pro sign-in (no prompt, throwaway state); tests use a fake Claude Code process and never reach a real account.

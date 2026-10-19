@@ -11,7 +11,6 @@ import (
 	"testing"
 	"time"
 
-	"resetwatch/internal/claudeconfig"
 	"resetwatch/internal/quota"
 	"resetwatch/internal/store"
 )
@@ -23,7 +22,7 @@ func setupTestApplication(t *testing.T, key string) (*application, *bytes.Buffer
 	state, claude := filepath.Join(t.TempDir(), "state"), filepath.Join(t.TempDir(), "claude")
 	sender := &capturedTestSender{}
 	app := &application{in: strings.NewReader(""), out: output, errOut: output, testSender: sender,
-		setupTerminal: func() bool { return false },
+		setupTerminal: func() bool { return false }, claude: fakeClaude{snapshot: setupTestSnapshot("claude")},
 		getenv: func(name string) string {
 			return map[string]string{"RESETWATCH_HOME": state, "CLAUDE_CONFIG_DIR": claude, "RESEND_API_KEY": key}[name]
 		},
@@ -68,7 +67,7 @@ func TestSetupInteractiveClaudeSavesKeyOnce(t *testing.T) {
 	if len(sender.messages) != 0 || strings.Contains(output.String(), "re_fixture_secret") {
 		t.Fatal("setup sent an unrequested email or exposed its key")
 	}
-	if !strings.Contains(output.String(), "Awaiting the first reading") || !strings.Contains(output.String(), "IST, UTC+05:30") {
+	if !strings.Contains(output.String(), "Claude: signed in; usage reading OK") || !strings.Contains(output.String(), "IST, UTC+05:30") {
 		t.Fatal("setup did not truthfully describe Claude readiness and email timezone")
 	}
 	app.in = strings.NewReader("\n\n\nn\n")
@@ -88,7 +87,7 @@ func assertSetupKeySaved(t *testing.T) {
 	}
 }
 
-func TestSetupNonInteractiveBothPersistsReadingAndHook(t *testing.T) {
+func TestSetupNonInteractiveBothPersistsReadings(t *testing.T) {
 	app, _, sender := setupTestApplication(t, "re_fixture_secret")
 	binary := setupTestCodex(t, app)
 	args := append(setupTestArguments("both"), "--codex-bin", binary)
@@ -100,9 +99,11 @@ func TestSetupNonInteractiveBothPersistsReadingAndHook(t *testing.T) {
 	if reading.AccountID != "fixture-account" || len(sender.messages) != 0 {
 		t.Fatal("setup did not save Codex's initial reading or sent an unrequested email")
 	}
-	settings := readSetupSettings(t, app)
-	if _, ok := settings["statusLine"]; !ok {
-		t.Fatal("both-provider setup did not install Claude's status line")
+	if readSetupSnapshot(t, app, "claude").Provider != "claude" {
+		t.Fatal("setup did not save Claude's initial reading")
+	}
+	if _, err := os.Stat(filepath.Join(app.getenv("CLAUDE_CONFIG_DIR"), "settings.json")); !os.IsNotExist(err) {
+		t.Fatal("setup must not write Claude settings")
 	}
 }
 
@@ -160,41 +161,50 @@ func TestSetupProviderFailureCancelOrSkipOnlyProvider(t *testing.T) {
 	}
 }
 
-func TestSetupClaudeConflictReplaceAndRestore(t *testing.T) {
-	app, _, _ := setupTestApplication(t, "re_fixture")
-	original := []byte(`{"statusLine":{"type":"command","command":"original-status"},"theme":"fixture"}`)
+// installOldClaudeStatusLine reproduces what older versions did: replace the user's status line.
+func installOldClaudeStatusLine(t *testing.T, app *application, original []byte) {
+	t.Helper()
 	writeSetupSettings(t, app, original)
-	if err := app.run(context.Background(), setupTestArguments("claude")); !errors.Is(err, claudeconfig.ErrConflict) {
-		t.Fatalf("noninteractive status-line conflict was not rejected: %v", err)
-	}
-	assertSetupInactive(t, app)
-	assertSetupSettingsEqual(t, app, original)
-	args := append(setupTestArguments("claude"), "--replace-statusline")
-	if err := app.run(context.Background(), args); err != nil {
+	installer, err := app.claudeInstaller()
+	if err != nil {
 		t.Fatal(err)
 	}
-	backup := readSetupBackup(t, app)
-	if err := app.run(context.Background(), setupTestArguments("claude")); err != nil {
+	if err := installer.Install(context.Background(), true); err != nil {
 		t.Fatal(err)
 	}
-	if !bytes.Equal(backup, readSetupBackup(t, app)) {
-		t.Fatal("rerun overwrote the original status-line backup")
-	}
-	binary := setupTestCodex(t, app)
-	if err := app.run(context.Background(), append(setupTestArguments("codex"), "--codex-bin", binary)); err != nil {
-		t.Fatal(err)
-	}
-	assertSetupConfig(t, app, "codex")
+}
+
+func assertOriginalClaudeStatusLine(t *testing.T, app *application) {
+	t.Helper()
 	settings := readSetupSettings(t, app)
 	var status struct {
 		Command string `json:"command"`
 	}
 	if err := json.Unmarshal(settings["statusLine"], &status); err != nil || status.Command != "original-status" {
-		t.Fatal("disabling Claude did not restore its previous status line")
+		t.Fatalf("previous Claude status line was not restored: %s", settings["statusLine"])
 	}
 	if string(settings["theme"]) != `"fixture"` {
-		t.Fatal("setup changed unrelated Claude settings")
+		t.Fatal("restoring changed unrelated Claude settings")
 	}
+}
+
+func TestSetupRestoresStatusLineFromOlderVersions(t *testing.T) {
+	app, _, _ := setupTestApplication(t, "re_fixture")
+	installOldClaudeStatusLine(t, app, []byte(`{"statusLine":{"type":"command","command":"original-status"},"theme":"fixture"}`))
+	if err := app.run(context.Background(), setupTestArguments("claude")); err != nil {
+		t.Fatal(err)
+	}
+	assertSetupConfig(t, app, "claude")
+	assertOriginalClaudeStatusLine(t, app)
+}
+
+func TestConnectClaudeRestoresStatusLineFromOlderVersions(t *testing.T) {
+	app, _, _ := setupTestApplication(t, "re_fixture")
+	installOldClaudeStatusLine(t, app, []byte(`{"statusLine":{"type":"command","command":"original-status"},"theme":"fixture"}`))
+	if err := app.run(context.Background(), []string{"connect", "claude"}); err != nil {
+		t.Fatal(err)
+	}
+	assertOriginalClaudeStatusLine(t, app)
 }
 
 func TestSetupOptionalEmailAndFailureRetainsConfiguration(t *testing.T) {
@@ -281,17 +291,15 @@ func TestSetupInvalidExplicitEmailReturnsWithoutRetry(t *testing.T) {
 	assertSetupInactive(t, app)
 }
 
-func TestSetupBrokenClaudeSettingsLeaveConfigInactive(t *testing.T) {
+func TestSetupClaudeReadFailureLeavesConfigInactive(t *testing.T) {
 	app, output, _ := setupTestApplication(t, "re_fixture_secret")
-	original := []byte(`{"statusLine":`)
-	writeSetupSettings(t, app, original)
+	app.claude = fakeClaude{err: quota.ErrNoClaudeLimits}
 	if err := app.run(context.Background(), setupTestArguments("claude")); err == nil {
-		t.Fatal("broken settings were accepted")
+		t.Fatal("setup accepted Claude without plan limits")
 	}
 	assertSetupInactive(t, app)
-	assertSetupSettingsEqual(t, app, original)
 	if strings.Contains(output.String(), "re_fixture_secret") {
-		t.Fatal("broken-settings failure exposed the key")
+		t.Fatal("Claude failure exposed the key")
 	}
 }
 
@@ -352,20 +360,4 @@ func readSetupSettings(t *testing.T, app *application) map[string]json.RawMessag
 		t.Fatal(err)
 	}
 	return settings
-}
-
-func assertSetupSettingsEqual(t *testing.T, app *application, want []byte) {
-	t.Helper()
-	if !bytes.Equal(setupSettingsBytes(t, app), want) {
-		t.Fatal("failed setup changed Claude settings")
-	}
-}
-
-func readSetupBackup(t *testing.T, app *application) []byte {
-	t.Helper()
-	content, err := os.ReadFile(filepath.Join(app.getenv("RESETWATCH_HOME"), "claude-statusline.json"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	return content
 }

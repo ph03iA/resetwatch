@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"errors"
 	"strings"
 	"testing"
 	"time"
@@ -11,12 +12,10 @@ import (
 func testApplication(t *testing.T) (*application, *bytes.Buffer) {
 	t.Helper()
 	output := &bytes.Buffer{}
-	home := t.TempDir()
-	app := &application{out: output, errOut: output, getenv: func(key string) string {
-		if key == "RESETWATCH_HOME" {
-			return home
-		}
-		return ""
+	home, claudeDir := t.TempDir(), t.TempDir() // never touch the real ~/.claude
+	// Tests never reach the real Claude Code; claudeLine and fakeClaude supply readings.
+	app := &application{out: output, errOut: output, claude: fakeClaude{err: errors.New("no Claude in tests")}, getenv: func(key string) string {
+		return map[string]string{"RESETWATCH_HOME": home, "CLAUDE_CONFIG_DIR": claudeDir}[key]
 	}}
 	return app, output
 }

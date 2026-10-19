@@ -339,12 +339,12 @@ func TestStepEmailsEarlyResetOfExhaustedWindowOnly(t *testing.T) {
 	assertHistory(t, engine.DB, "sent", 1)
 }
 
-func TestStepWithoutPollingSendsClaudeResetFromSavedReadings(t *testing.T) {
+func TestStepSendsClaudeResetConfirmedOnlyByFreshReading(t *testing.T) {
 	for _, fresh := range []bool{true, false} {
 		engine, _, sender, now := testEngine(t)
 		engine.Provider = nil
 		ctx := context.Background()
-		claude := quota.Snapshot{Provider: "claude", AccountID: quota.ClaudeAccountID, ObservedAt: *now,
+		claude := quota.Snapshot{Provider: "claude", AccountID: "claude-account-hash", ObservedAt: *now,
 			Windows: []quota.Window{{ID: "claude:five_hour", UsedPercent: 100, Duration: 5 * time.Hour, ResetsAt: now.Add(time.Hour)}}}
 		must(t, engine.DB.SaveSnapshot(ctx, claude))
 		config, err := engine.DB.Config(ctx)
@@ -352,7 +352,7 @@ func TestStepWithoutPollingSendsClaudeResetFromSavedReadings(t *testing.T) {
 		must(t, engine.DB.Schedule(ctx, claude, config, *now))
 		*now = now.Add(time.Hour + time.Minute)
 		if fresh {
-			// Claude Code's status line reported again after the reset.
+			// A Claude usage reading arrived after the reset.
 			claude.ObservedAt = *now
 			claude.Windows[0].UsedPercent, claude.Windows[0].ResetsAt = 2, now.Add(5*time.Hour)
 			must(t, engine.DB.SaveSnapshot(ctx, claude))
@@ -361,8 +361,8 @@ func TestStepWithoutPollingSendsClaudeResetFromSavedReadings(t *testing.T) {
 		if len(sender.messages) != 1 || sender.messages[0].Provider != "claude" || sender.messages[0].Duration != 5*time.Hour {
 			t.Fatalf("fresh=%v: Claude reset was not emailed with its window length: %#v", fresh, sender.messages)
 		}
-		if sender.messages[0].Confirmed {
-			t.Fatalf("fresh=%v: status-line callbacks must never confirm Claude allowance", fresh)
+		if sender.messages[0].Confirmed != fresh {
+			t.Fatalf("fresh=%v: Confirmed=%v; only a reading after the reset may confirm it", fresh, sender.messages[0].Confirmed)
 		}
 	}
 }

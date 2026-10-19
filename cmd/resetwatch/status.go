@@ -5,7 +5,6 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
-	"slices"
 
 	"resetwatch/internal/quota"
 	"resetwatch/internal/store"
@@ -42,7 +41,7 @@ func (a *application) status(ctx context.Context, args []string) error {
 func (a *application) statusFlags(args []string) (statusOptions, error) {
 	var options statusOptions
 	flags := a.flags("status")
-	flags.BoolVar(&options.refresh, "refresh", false, "refresh selected Codex data; Claude uses callbacks")
+	flags.BoolVar(&options.refresh, "refresh", false, "read current limits before displaying")
 	flags.BoolVar(&options.json, "json", false, "machine-readable output")
 	flags.StringVar(&options.provider, "provider", "", "codex or claude")
 	flags.BoolVar(&options.all, "all", false, "show all selected providers (JSON is keyed by provider)")
@@ -120,8 +119,13 @@ func (a *application) statusProviders(ctx context.Context, config store.Config) 
 }
 
 func (a *application) refreshStatusProviders(ctx context.Context, providers []string, refresh bool) error {
-	if refresh && slices.Contains(providers, "codex") {
-		return a.refresh(ctx)
+	if !refresh {
+		return nil
+	}
+	for _, provider := range providers {
+		if err := a.refresh(ctx, provider); err != nil {
+			return err
+		}
 	}
 	return nil
 }

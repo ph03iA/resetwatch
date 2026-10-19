@@ -20,9 +20,12 @@ func TestStepReloadsSelectedProviderAndExecutableEveryCycle(t *testing.T) {
 	config.Providers, config.CodexBin = "codex", "first-binary"
 	must(t, engine.DB.ConfigureSetup(ctx, config, *now))
 	var binaries []string
-	engine.ProviderFactory = func(current store.Config) quota.Provider {
+	engine.ProviderFactory = func(current store.Config) []quota.Provider {
+		if !current.Selected("codex") {
+			return nil
+		}
 		binaries = append(binaries, current.CodexBin)
-		return &fakeProvider{snapshot: watchSnapshot(*now, now.Add(time.Hour), 10)}
+		return []quota.Provider{&fakeProvider{snapshot: watchSnapshot(*now, now.Add(time.Hour), 10)}}
 	}
 	must(t, engine.Step(ctx))
 	config.Providers = "claude"
@@ -78,7 +81,7 @@ func TestExpiredLeaseIsRecheckedBeforeExternalSend(t *testing.T) {
 	ctx := context.Background()
 	alert := claimDeliveryAlert(t, engine, *now)
 	*now = now.Add(2 * time.Minute)
-	if err := engine.deliver(ctx, alert, nil); !errors.Is(err, sql.ErrNoRows) {
+	if err := engine.deliver(ctx, alert); !errors.Is(err, sql.ErrNoRows) {
 		t.Fatalf("expired lease was not rejected immediately before send: %v", err)
 	}
 	if len(sender.messages) != 0 {

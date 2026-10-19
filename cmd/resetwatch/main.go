@@ -42,6 +42,7 @@ type application struct {
 	setupTerminal  func() bool
 	setupSecret    func() (string, error)
 	setupReadCodex func(context.Context, string) (quota.Snapshot, error)
+	claude         quota.Provider // tests replace the Claude usage reader
 }
 
 func (a *application) run(ctx context.Context, args []string) error {
@@ -54,6 +55,7 @@ func (a *application) run(ctx context.Context, args []string) error {
 	local := map[string]func([]string) error{
 		"help": a.help, "--help": a.help, "-h": a.help,
 		"version": a.printVersion, "--version": a.printVersion, "demo": a.demo,
+		"claude-statusline": a.claudeStatusLine,
 	}
 	if command, ok := local[args[0]]; ok {
 		return command(args[1:])
@@ -65,7 +67,6 @@ func (a *application) stateCommand(ctx context.Context, args []string) error {
 	commands := map[string]func(context.Context, []string) error{
 		"connect": a.connect, "notify": a.configure, "status": a.status, "setup": a.setup,
 		"history": a.history, "watch": a.watch, "retry": a.retry,
-		"claude-statusline": a.claudeStatusLine,
 	}
 	command, ok := commands[args[0]]
 	if !ok {
@@ -123,10 +124,9 @@ func (a *application) help(args []string) error {
 
 Usage:
   resetwatch setup [--providers codex|claude|both] [--email ADDRESS] [--from SENDER]
-                   [--codex-bin PATH] [--replace-statusline] [--test-email] [--non-interactive]
-  resetwatch connect claude [--replace-statusline]
+                   [--codex-bin PATH] [--test-email] [--non-interactive]
+  resetwatch connect claude
   resetwatch connect codex [--codex-bin /path/to/codex]
-  resetwatch claude-statusline   (set as your Claude Code status line command)
   resetwatch notify --email you@example.com --from "ResetWatch <alerts@yourdomain.com>"
   resetwatch test-email --email your-resend-account-email [--from SENDER]
   resetwatch watch [--interval 1m] [--once]
@@ -138,7 +138,7 @@ Usage:
 
 Run setup for guided provider and email configuration; the watcher remains a separate command.
 Codex quota commands require Codex signed in with ChatGPT. No inference requests are made.
-Claude Pro/Max limits are read from Claude Code's status line data while Claude Code is open.
+Claude Pro/Max limits are read from Claude Code (claude on PATH) without sending any prompt.
 Setup asks for a missing Resend key without echo and saves it in .env in your current folder.
 Keep running watch from that folder, or set RESEND_API_KEY in the environment.
 An existing environment key takes priority. The sender must be verified in Resend.

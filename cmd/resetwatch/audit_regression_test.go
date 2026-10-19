@@ -4,7 +4,6 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
-	"fmt"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -83,7 +82,7 @@ func TestNotifyAddressChangeDuringDeliveryLeavesConfigurationIntact(t *testing.T
 	}
 }
 
-func TestClaudeRepeatingCallbackRecoversAfterSchedulingFailure(t *testing.T) {
+func TestClaudeReadingRecoversAfterSchedulingFailure(t *testing.T) {
 	app, _ := testApplication(t)
 	runOK(t, app, "notify", "--email", "person@example.test", "--from", "alerts@example.test")
 	writer, err := sql.Open("sqlite", filepath.Join(app.getenv("RESETWATCH_HOME"), "state.db"))
@@ -96,16 +95,14 @@ func TestClaudeRepeatingCallbackRecoversAfterSchedulingFailure(t *testing.T) {
 		t.Fatal(err)
 	}
 	reset := time.Now().Add(time.Hour).Unix()
-	input := fmt.Sprintf(`{"session_id":"session","rate_limits":{"five_hour":{"used_percentage":100,"resets_at":%d}}}`, reset)
-	app.in = strings.NewReader(input)
-	if err := app.run(context.Background(), []string{"claude-statusline"}); err == nil {
+	app.claude = fakeClaude{snapshot: claudeReading(map[string][2]int64{"five_hour": {100, reset}})}
+	if err := app.run(context.Background(), []string{"status", "--provider", "claude", "--refresh"}); err == nil {
 		t.Fatal("expected the synthetic scheduling failure")
 	}
 	if _, err := writer.Exec("DROP TRIGGER reject_test_alert"); err != nil {
 		t.Fatal(err)
 	}
-	app.in = strings.NewReader(input)
-	runOK(t, app, "claude-statusline")
+	runOK(t, app, "status", "--provider", "claude", "--refresh")
 	onlyPending(t, claudeAlerts(t, app), "claude:five_hour", reset)
 }
 
@@ -136,7 +133,7 @@ func auditStateDB(t *testing.T, app *application) *store.DB {
 func seedDueClaudeReminder(t *testing.T, db *store.DB, now time.Time) {
 	t.Helper()
 	ctx := context.Background()
-	snapshot := quota.Snapshot{Provider: "claude", AccountID: quota.ClaudeAccountID, ObservedAt: now.Add(-2 * time.Hour), Partial: true,
+	snapshot := quota.Snapshot{Provider: "claude", AccountID: "claude-account-hash", ObservedAt: now.Add(-2 * time.Hour), Partial: true,
 		Windows: []quota.Window{{ID: "claude:five_hour", UsedPercent: 100, ResetsAt: now.Add(-time.Hour), Duration: 5 * time.Hour}}}
 	if err := db.SaveSnapshot(ctx, snapshot); err != nil {
 		t.Fatal(err)

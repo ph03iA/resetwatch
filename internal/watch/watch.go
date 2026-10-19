@@ -16,7 +16,7 @@ import (
 type Engine struct {
 	DB              *store.DB
 	Provider        quota.Provider
-	ProviderFactory func(store.Config) quota.Provider
+	ProviderFactory func(store.Config) []quota.Provider
 	Sender          notify.Sender
 	Now             func() time.Time
 	Log             func(string)
@@ -40,17 +40,16 @@ func (e *Engine) Step(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	// A nil Provider means nothing to poll (Claude readings arrive from its status line instead).
-	var snapshot *quota.Snapshot
-	var observationErr error
-	if provider := e.cycleProvider(config); provider != nil {
-		snapshot, observationErr = e.observe(ctx, provider)
+	var observationErrs []error
+	for _, provider := range e.cycleProviders(config) {
+		if _, err := e.observe(ctx, provider); err != nil {
+			observationErrs = append(observationErrs, err)
+		}
 	}
-	if observationErr != nil {
+	if len(observationErrs) > 0 {
 		e.log("Quota refresh unavailable; due emails will describe expected resets only.")
 	}
-	deliveryErr := e.deliverDue(ctx, snapshot)
-	return errors.Join(observationErr, deliveryErr)
+	return errors.Join(append(observationErrs, e.deliverDue(ctx))...)
 }
 
 // Observe reads the provider and records the reading; RecordSnapshot loads current settings itself.
@@ -58,14 +57,15 @@ func (e *Engine) Observe(ctx context.Context) (*quota.Snapshot, error) {
 	return e.observe(ctx, e.Provider)
 }
 
-func (e *Engine) cycleProvider(config store.Config) quota.Provider {
-	if !config.Selected("codex") {
-		return nil
-	}
+// cycleProviders lists the readers to poll this cycle; a single Provider is treated as Codex.
+func (e *Engine) cycleProviders(config store.Config) []quota.Provider {
 	if e.ProviderFactory != nil {
 		return e.ProviderFactory(config)
 	}
-	return e.Provider
+	if e.Provider == nil || !config.Selected("codex") {
+		return nil
+	}
+	return []quota.Provider{e.Provider}
 }
 
 func (e *Engine) observe(ctx context.Context, provider quota.Provider) (*quota.Snapshot, error) {
@@ -79,7 +79,7 @@ func (e *Engine) observe(ctx context.Context, provider quota.Provider) (*quota.S
 	return &snapshot, nil
 }
 
-func (e *Engine) deliverDue(ctx context.Context, snapshot *quota.Snapshot) error {
+func (e *Engine) deliverDue(ctx context.Context) error {
 	for range 50 {
 		alert, err := e.DB.Claim(ctx, e.clock())
 		if errors.Is(err, sql.ErrNoRows) {
@@ -88,14 +88,14 @@ func (e *Engine) deliverDue(ctx context.Context, snapshot *quota.Snapshot) error
 		if err != nil {
 			return err
 		}
-		if err := e.deliver(ctx, alert, snapshot); err != nil {
+		if err := e.deliver(ctx, alert); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-func (e *Engine) deliver(ctx context.Context, alert store.Alert, snapshot *quota.Snapshot) error {
+func (e *Engine) deliver(ctx context.Context, alert store.Alert) error {
 	config, err := e.DB.Config(ctx)
 	if err != nil {
 		return err
@@ -103,16 +103,13 @@ func (e *Engine) deliver(ctx context.Context, alert store.Alert, snapshot *quota
 	if reason := e.cancelReason(ctx, alert, config); reason != "" {
 		return e.DB.Finish(ctx, alert, "cancelled", reason, e.clock(), e.clock())
 	}
-	return e.sendAlert(ctx, alert, snapshot)
+	return e.sendAlert(ctx, alert)
 }
 
-func (e *Engine) sendAlert(ctx context.Context, alert store.Alert, snapshot *quota.Snapshot) error {
-	message, err := e.DB.FreezeMessage(ctx, alert, compose(alert, e.alertSnapshot(ctx, alert, snapshot), e.clock()))
+func (e *Engine) sendAlert(ctx context.Context, alert store.Alert) error {
+	message, err := e.DB.FreezeMessage(ctx, alert, compose(alert, e.alertSnapshot(ctx, alert), e.clock()))
 	if err != nil {
 		return err
-	}
-	if message.Provider == "claude" && message.Confirmed {
-		return e.DB.Finish(ctx, alert, "cancelled", "stored Claude confirmation cannot be safely retried; inspect the previous delivery", e.clock(), e.clock())
 	}
 	if err := e.DB.ValidateDelivery(ctx, alert, e.clock()); err != nil {
 		return err
@@ -128,12 +125,9 @@ func (e *Engine) sendAlert(ctx context.Context, alert store.Alert, snapshot *quo
 	return nil
 }
 
-// alertSnapshot prefers this cycle's reading of the alert's provider and otherwise the last saved one;
-// compose still only confirms a reset from data observed after it and within two minutes.
-func (e *Engine) alertSnapshot(ctx context.Context, alert store.Alert, current *quota.Snapshot) *quota.Snapshot {
-	if current != nil && current.Provider == alert.Provider {
-		return current
-	}
+// alertSnapshot returns the provider's last saved reading, which this cycle's poll just recorded;
+// compose only confirms a reset from data observed after it and within two minutes.
+func (e *Engine) alertSnapshot(ctx context.Context, alert store.Alert) *quota.Snapshot {
 	saved, err := e.DB.Snapshot(ctx, alert.Provider)
 	if err != nil {
 		return nil
@@ -214,7 +208,7 @@ func freshForAlert(snapshot *quota.Snapshot, alert store.Alert, now time.Time) b
 
 func confirmedUsageAllowed(snapshot *quota.Snapshot) bool {
 	if snapshot.Provider == "claude" {
-		return false // callback time is not a provider measurement time
+		return true // Claude has no permission flag; fresh windows below 100% are the evidence
 	}
 	if snapshot.Provider == "codex" {
 		return snapshot.OrdinaryUsageAllowed != nil && *snapshot.OrdinaryUsageAllowed

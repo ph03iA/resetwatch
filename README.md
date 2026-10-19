@@ -132,7 +132,7 @@ Limits of this approach:
 - **Experimental interface.** Anthropic marks the `get_usage` request as experimental; any Claude Code update may change or remove it. If it stops working, the watcher logs that the refresh is unavailable and Claude emails fall back to **should be back** at the recorded reset time.
 - Install the native Claude Code build; `.cmd`, `.bat` and `.ps1` shims are not supported. Each check starts Claude Code for about one to two seconds.
 - A Claude **is back** email needs a reading taken after the reset, within two minutes, with every window below 100%; Claude reports no separate permission flag. A new window with a later reset time makes the reminder due early.
-- A missing window keeps its last known value and reminder until it resets. Reset times are rounded to the minute because Claude recomputes them with sub-second drift.
+- A missing window keeps its last known value and reminder until it resets. After a reset, Claude leaves that window out until you use Claude again, so a fresh reading without it counts as unused and the email can say **is back**. Reset times are rounded to the minute because Claude recomputes them with sub-second drift.
 - The account is identified by a hash of the Claude account email; the email itself is not stored.
 - API-key and Bedrock/Vertex sessions report no plan limits.
 

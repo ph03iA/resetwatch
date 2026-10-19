@@ -474,6 +474,7 @@ Measured every changed/new production function against `7216008` using gocyclo; 
 | quota.DiscoverBinary | New | 2 |
 | store.(Config).withProvider | New | 2 |
 | claudeconfig.(Installer).backupPath | New | 1 |
+| quota.ClaudeWindowDuration | New | 1 |
 | claudeconfig.(Installer).settingsPath | New | 1 |
 | store.cancelDisabled | New | 1 |
 | store.cancelMovedAlert | New | 1 |

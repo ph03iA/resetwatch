@@ -47,6 +47,30 @@ func TestFreshClaudeReadingConfirmsReset(t *testing.T) {
 	}
 }
 
+// After a reset Claude leaves the window out until it is used again; a fresh reading without it confirms
+// the reset and still names the window, but a weekly limit at 100% blocks the confirmation.
+func TestMissingClaudeWindowAfterResetConfirms(t *testing.T) {
+	now := watchTime()
+	alert := composeAlert(now.Add(-time.Minute))
+	alert.Provider, alert.Window = "claude", "claude:five_hour"
+	for _, test := range []struct {
+		weeklyUsed float64
+		want       bool
+	}{{34, true}, {100, false}} {
+		snapshot := &quota.Snapshot{Provider: "claude", AccountID: "account-hash", ObservedAt: now,
+			Windows: []quota.Window{{ID: "claude:seven_day", UsedPercent: test.weeklyUsed, Duration: 7 * 24 * time.Hour, ResetsAt: now.Add(48 * time.Hour)}}}
+		m := compose(alert, snapshot, now)
+		if m.Confirmed != test.want || m.Duration != 5*time.Hour {
+			t.Fatalf("weekly %v%%: Confirmed=%v Duration=%v, want %v and 5h", test.weeklyUsed, m.Confirmed, m.Duration, test.want)
+		}
+	}
+	codex := watchSnapshot(now, now.Add(time.Hour), 10)
+	codex.Windows = nil
+	if compose(composeAlert(now.Add(-time.Minute)), &codex, now).Confirmed {
+		t.Fatal("a missing Codex window must not confirm the reset")
+	}
+}
+
 // A window still at 100% must be named in the email even when the reset cannot be confirmed.
 func TestStillExhaustedWindowWarnsWithoutConfirmation(t *testing.T) {
 	reset := watchTime()

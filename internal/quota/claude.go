@@ -98,11 +98,10 @@ func decodeClaudeUsage(init claudeInitResponse, usage claudeUsageResponse, now t
 	// Partial: Claude may omit a window, which means unknown rather than removed.
 	snapshot := Snapshot{Provider: "claude", AccountID: hex.EncodeToString(digest[:]), ObservedAt: now, Partial: true}
 	for _, entry := range []struct {
-		id       string
-		duration time.Duration
-		data     *claudeUsageWindow
-	}{{"claude:five_hour", 5 * time.Hour, usage.RateLimits.FiveHour}, {"claude:seven_day", 7 * 24 * time.Hour, usage.RateLimits.SevenDay}} {
-		if window, ok := claudeWindowAt(entry.id, entry.duration, entry.data, now); ok {
+		id   string
+		data *claudeUsageWindow
+	}{{"claude:five_hour", usage.RateLimits.FiveHour}, {"claude:seven_day", usage.RateLimits.SevenDay}} {
+		if window, ok := claudeWindowAt(entry.id, ClaudeWindowDuration(entry.id), entry.data, now); ok {
 			snapshot.Windows = append(snapshot.Windows, window)
 		}
 	}
@@ -110,6 +109,11 @@ func decodeClaudeUsage(init claudeInitResponse, usage claudeUsageResponse, now t
 		return Snapshot{}, ErrNoClaudeLimits
 	}
 	return snapshot, ValidateSnapshot(snapshot)
+}
+
+// ClaudeWindowDuration is the length of a Claude usage window by ID; zero when unknown.
+func ClaudeWindowDuration(id string) time.Duration {
+	return map[string]time.Duration{"claude:five_hour": 5 * time.Hour, "claude:seven_day": 7 * 24 * time.Hour}[id]
 }
 
 // claudeWindowAt skips absent or already-reset windows. Claude recomputes resets_at with

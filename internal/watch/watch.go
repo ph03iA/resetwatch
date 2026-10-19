@@ -176,8 +176,14 @@ func compose(alert store.Alert, snapshot *quota.Snapshot, now time.Time) notify.
 	return message
 }
 
+// windowAvailable reports whether the window is below 100%. After a reset, Claude leaves a window
+// out until new usage starts it, so a missing Claude window in a fresh reading is unused.
 func windowAvailable(snapshot *quota.Snapshot, id string) bool {
-	return slices.ContainsFunc(snapshot.Windows, func(w quota.Window) bool { return w.ID == id && w.UsedPercent < 100 })
+	i := slices.IndexFunc(snapshot.Windows, func(w quota.Window) bool { return w.ID == id })
+	if i < 0 {
+		return snapshot.Provider == "claude"
+	}
+	return snapshot.Windows[i].UsedPercent < 100
 }
 
 // observedAfterReset reports whether the reading is for this alert's account and was taken after its reset.
@@ -188,17 +194,18 @@ func observedAfterReset(snapshot *quota.Snapshot, alert store.Alert, now time.Ti
 	return !snapshot.ObservedAt.Before(alert.ResetAt) && !snapshot.ObservedAt.After(now.Add(time.Minute))
 }
 
-// windowDuration finds the alert window's length in a snapshot of the same account; zero when unknown.
+// windowDuration finds the alert window's length in a snapshot of the same account, falling back
+// to Claude's fixed window lengths because Claude omits a window after it resets; zero when unknown.
 func windowDuration(snapshot *quota.Snapshot, alert store.Alert) time.Duration {
 	if snapshot == nil || snapshot.AccountID != alert.AccountID || snapshot.Provider != alert.Provider {
-		return 0
+		return quota.ClaudeWindowDuration(alert.Window)
 	}
 	for _, window := range snapshot.Windows {
 		if window.ID == alert.Window {
 			return window.Duration
 		}
 	}
-	return 0
+	return quota.ClaudeWindowDuration(alert.Window)
 }
 
 // freshForAlert reports whether the reading can prove the reset: explicit permission, observed after it, within two minutes.

@@ -51,6 +51,9 @@ func setupTestSnapshot(provider string) quota.Snapshot {
 }
 
 func TestSetupInteractiveClaudeSavesKeyOnce(t *testing.T) {
+	originalZone := time.Local
+	t.Cleanup(func() { time.Local = originalZone })
+	time.Local = time.FixedZone("IST", 5*3600+30*60)
 	app, output, sender := setupTestApplication(t, "")
 	app.setupTerminal = func() bool { return true }
 	app.in = strings.NewReader("2\nfixture@example.test\n\nn\n")
@@ -360,4 +363,17 @@ func readSetupSettings(t *testing.T, app *application) map[string]json.RawMessag
 		t.Fatal(err)
 	}
 	return settings
+}
+
+func TestZoneLabelShowsComputerZone(t *testing.T) {
+	at := time.Date(2026, 10, 19, 12, 0, 0, 0, time.UTC)
+	for zone, want := range map[*time.Location]string{
+		time.FixedZone("IST", 5*3600+30*60): "IST, UTC+05:30",
+		time.FixedZone("PST", -8*3600):      "PST, UTC-08:00",
+		time.UTC:                            "UTC, UTC+00:00",
+	} {
+		if got := zoneLabel(at.In(zone)); got != want {
+			t.Errorf("zoneLabel = %q, want %q", got, want)
+		}
+	}
 }

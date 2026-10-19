@@ -367,7 +367,7 @@ func TestStepSendsClaudeResetConfirmedOnlyByFreshReading(t *testing.T) {
 	}
 }
 
-func TestComposeFreezesIndianResetDateAndTime(t *testing.T) {
+func TestComposeFreezesResetTimeInComputerZone(t *testing.T) {
 	originalZone := time.Local
 	t.Cleanup(func() { time.Local = originalZone })
 	time.Local = time.FixedZone("TestWest", -8*3600)
@@ -376,16 +376,16 @@ func TestComposeFreezesIndianResetDateAndTime(t *testing.T) {
 		reset          time.Time
 		want           string
 	}{
-		{"codex", "codex", time.Date(2026, 10, 15, 15, 0, 0, 0, time.UTC), "2026-10-15 8:30 PM IST"},
-		{"claude", "claude", time.Date(2026, 10, 15, 19, 45, 0, 0, time.UTC), "2026-10-16 1:15 AM IST"},
-		{"year rollover", "codex", time.Date(2026, 12, 31, 20, 0, 0, 0, time.UTC), "2027-01-01 1:30 AM IST"},
+		{"codex", "codex", time.Date(2026, 10, 15, 15, 0, 0, 0, time.UTC), "2026-10-15 7:00 AM TestWest"},
+		{"claude", "claude", time.Date(2026, 10, 15, 19, 45, 0, 0, time.UTC), "2026-10-15 11:45 AM TestWest"},
+		{"year rollover", "codex", time.Date(2027, 1, 1, 3, 0, 0, 0, time.UTC), "2026-12-31 7:00 PM TestWest"},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			alert := composeAlert(test.reset)
 			alert.Provider = test.provider
 			message := compose(alert, nil, test.reset)
 			if message.LocalResetAt != test.want {
-				t.Fatalf("Indian reset display = %q, want %q", message.LocalResetAt, test.want)
+				t.Fatalf("local reset display = %q, want %q", message.LocalResetAt, test.want)
 			}
 			if !message.ResetAt.Equal(test.reset) {
 				t.Fatal("display conversion changed the scheduled reset instant")

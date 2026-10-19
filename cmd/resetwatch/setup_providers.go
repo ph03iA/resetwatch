@@ -149,7 +149,7 @@ func (a *application) activateSetup(ctx context.Context, s *setupState) error {
 func (a *application) printSetupSummary(ctx context.Context, s *setupState) {
 	fmt.Fprintln(a.out, "\nSetup saved. Providers:", s.options.providers)
 	fmt.Fprintln(a.out, "Reminder email:", s.options.email)
-	fmt.Fprintln(a.out, "Email time zone: Indian Standard Time (IST, UTC+05:30).")
+	fmt.Fprintln(a.out, "Email time zone: this computer's ("+zoneLabel(time.Now())+").")
 	if s.emailTested {
 		fmt.Fprintln(a.out, "Email test: accepted by Resend; check your inbox and spam folder.")
 	}
@@ -157,4 +157,14 @@ func (a *application) printSetupSummary(ctx context.Context, s *setupState) {
 	fmt.Fprintln(a.out, "Run the watcher from this folder so .env loads:", folder)
 	fmt.Fprintln(a.out, "Start: resetwatch watch")
 	fmt.Fprintln(a.out, "Provider changes apply on the next watcher cycle. Restart a running watcher after changing its API key.")
+}
+
+// zoneLabel names the computer's time zone the way reset emails show it, e.g. "IST, UTC+05:30".
+func zoneLabel(at time.Time) string {
+	name, offset := at.Zone()
+	sign := "+"
+	if offset < 0 {
+		sign, offset = "-", -offset
+	}
+	return fmt.Sprintf("%s, UTC%s%02d:%02d", name, sign, offset/3600, offset%3600/60)
 }

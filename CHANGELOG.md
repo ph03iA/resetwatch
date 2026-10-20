@@ -2,6 +2,7 @@
 
 ## Unreleased — 2026-10-16
 
+- Reminders are now sent through Gmail instead of Resend: setup signs in to Google in your browser (PKCE, send-only permission, no inbox access) and keeps the sign-in in the system credential store. New `gmail connect`, `gmail status` and `gmail disconnect` commands; `test-email` sends to the connected account. `--email`, `--from`, `RESEND_API_KEY` and `.env` are removed. A dead sign-in pauses delivery without spending attempts. Saved state moves to version 2 when Gmail is connected, carrying unsent reminders over. The source ships without the owner's Google client, so sign-in reports that until one is added.
 - Redesigned the website as a plain printed manual that shows real output from the email and status code, in light and dark, and brought it up to date: Codex and Claude, "is back" versus "should be back", the six commands, the sender rule and honest limits.
 - Removed the `connect`, `notify`, `retry` and `demo` commands; `setup` does their job. The commands are now `setup`, `watch`, `status`, `history`, `test-email` and `version`. The README is shorter, with the detailed rules in `docs/details.md`.
 - Claude reset emails now say **is back** when a fresh reading taken after the reset leaves out that window: Claude omits a window until it is used again. The email also names the 5-hour or weekly limit in that case.

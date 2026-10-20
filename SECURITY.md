@@ -7,18 +7,18 @@ This is the initial v0.1.0 release candidate. There are no prebuilt binaries; bu
 ## Credentials and local data
 
 - Sign in using Codex itself. ResetWatch does not read Codex authentication files, export account tokens, or make inference requests. The native Codex process owns its authentication and provider connections.
-- Supply `RESEND_API_KEY` through the process environment or a private `.env` file in the current working directory. A nonempty process value wins without reading the file. Only the email key is loaded from the file, and it is not exported to Codex or saved in SQLite. Environment files contain plaintext secrets: restrict access to your user (`chmod 600 .env` on Unix; private ACLs on Windows), protect backups, and never commit them. Real environment files are excluded from Git; the included `.env.example` is blank. Environment variables remain accessible to sufficiently privileged local processes. Use a restricted sending key where your email provider supports it.
-- The SQLite database stores email addresses, hashed account identity, quota snapshots, alert payloads, and delivery history. It is not encrypted. Protect the state directory, SQLite sidecars, logs, and backups with operating system permissions and disk encryption as appropriate.
+- Gmail is connected through Google's desktop sign-in with PKCE and a random state, asking only for `gmail.send`, `openid` and `email`; ResetWatch cannot read the inbox. The refresh token is stored in the operating system's credential store (Windows Credential Manager, macOS Keychain, Linux Secret Service), never in a file or the database, and there is no plaintext fallback. Access tokens stay in memory. Tokens are never printed. Anyone who can read your credential store as your user can send email as you through this grant; remove it at myaccount.google.com/permissions if a device is lost.
+- The SQLite database stores your Gmail address and Google account ID, hashed AI account identity, quota snapshots, alert payloads, and delivery history. It is not encrypted. Protect the state directory, SQLite sidecars, logs, and backups with operating system permissions and disk encryption as appropriate.
 - Unix file modes are requested as `0700` for the state directory and `0600` for the database. Windows protection depends on inherited ACLs. Do not point `RESETWATCH_HOME` at a shared or attacker-controlled directory.
 - `--codex-bin` is executable configuration. Point it only at a trusted native binary. ResetWatch rejects Windows shell shims and starts the process directly without a shell.
 
 ## Network and delivery
 
-Production email requests use `https://api.resend.com/emails`. Redirects are refused so the API key cannot be forwarded to another endpoint. Requests have bounded timeouts; responses are size limited, and raw response bodies are not printed in errors.
+Email goes to `https://gmail.googleapis.com/gmail/v1/users/me/messages/send`, from the connected account to itself. Redirects are refused so the access token cannot be forwarded to another endpoint. Requests have bounded timeouts; responses are size limited, and raw response bodies are not printed in errors.
 
-Alert payloads are frozen before delivery and reused with a stable idempotency key. Automatic and manual retries stay within the local attempt and age limits, keeping the retry window shorter than Resend's 24-hour idempotency period. This reduces duplicate sends but is not an unlimited exactly-once delivery guarantee. An accepted receipt does not prove inbox delivery.
+Messages are rendered once and frozen with the reminder, so retries carry identical content and a stable Message-ID. Gmail offers no idempotency, so a retry after a lost answer can deliver twice. Retries stay within eight attempts and 23 hours. An accepted receipt does not prove inbox delivery.
 
-The recipient, sender, reset timestamp, and quota-window labels are sent to Resend. The static website does not access accounts, receive keys, or run analytics.
+The email (your address, reset time and quota-window labels) is sent to Google. The static website does not access accounts, receive keys, or run analytics.
 
 ## Identity limitation
 

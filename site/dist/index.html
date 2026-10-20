@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#f2efe7" media="(prefers-color-scheme: light)">
   <meta name="theme-color" content="#171613" media="(prefers-color-scheme: dark)">
-  <meta name="description" content="ResetWatch is a small program for your computer. It emails you once when a used-up Codex or Claude limit comes back. Free and open source under the MIT License.">
+  <meta name="description" content="ResetWatch is a small program for your computer. It emails you once, from your own Gmail, when a used-up Codex or Claude limit comes back. Free and open source under the MIT License.">
   <meta property="og:title" content="ResetWatch: an email when your Codex or Claude limit comes back">
   <meta property="og:description" content="A small program that checks your Codex and Claude usage on your own computer and emails you when a used-up limit resets.">
   <meta property="og:type" content="website">
@@ -46,7 +46,8 @@
         <div class="specimen-notes">
           <h2 id="specimen-title">The email you get</h2>
           <dl class="specimen-meta">
-            <dt>From</dt><dd>ResetWatch &lt;onboarding@resend.dev&gt;</dd>
+            <dt>From</dt><dd>ResetWatch &lt;your Gmail address&gt;</dd>
+            <dt>To</dt><dd>your Gmail address</dd>
             <dt>Subject</dt><dd>Your Claude 5-hour limit is back. Get back to work</dd>
           </dl>
           <p>Rendered by ResetWatch’s own email code, with example values. Yours names your limit and uses your time zone.</p>
@@ -83,9 +84,11 @@
         <ul class="plain">
           <li>Git, and Go 1.27.2 or newer.</li>
           <li>Codex signed in with a ChatGPT plan, Claude Code signed in with a Pro or Max plan, or both.</li>
-          <li>A free <a href="https://resend.com">Resend</a> account and API key. Resend delivers the email.</li>
+          <li>A Google account with Gmail. Reminders are sent from it to itself.</li>
+          <li>A desktop with a working credential store: Windows Credential Manager, macOS Keychain or Linux Secret Service. Headless servers are not supported yet.</li>
         </ul>
         <p>There are no prebuilt downloads and no hosted service. You build it and run it yourself.</p>
+        <p>Gmail sign-in needs the Google client that the project owner registers and ships with ResetWatch. The source does not include one yet; until it does, setup says so and stops before sign-in.</p>
 
         <div class="os" role="tablist" aria-label="Your operating system">
           <button id="tab-windows" type="button" role="tab" aria-selected="true" aria-controls="install-panel" tabindex="0" data-os="windows">Windows</button>
@@ -102,19 +105,19 @@ go build ./cmd/resetwatch
           </li>
           <li>
             <div class="step-head"><h3>Set up</h3><button type="button" class="copy" data-copy="setup-command" aria-label="Copy the setup command">Copy</button></div>
-            <p>Choose Codex, Claude or both, then enter your email. It asks for your Resend key without showing it and saves it to <code>.env</code> in this folder.</p>
+            <p>Choose Codex, Claude or both. Your browser then opens to sign in to Google, which asks to let ResetWatch send email for you. It cannot read your inbox. The sign-in is kept in your system credential store.</p>
             <pre><code id="setup-command">.\resetwatch.exe setup</code></pre>
           </li>
           <li>
             <div class="step-head"><h3>Start watching</h3><button type="button" class="copy" data-copy="watch-command" aria-label="Copy the watch command">Copy</button></div>
-            <p>Run it from the same folder and leave the window open. <kbd>Ctrl</kbd>+<kbd>C</kbd> stops it safely.</p>
+            <p>Leave the window open. <kbd>Ctrl</kbd>+<kbd>C</kbd> stops it safely.</p>
             <pre><code id="watch-command">.\resetwatch.exe watch</code></pre>
           </li>
         </ol>
         <p class="copy-status" id="copy-status" role="status" aria-live="polite"></p>
 
-        <h3 class="note-title">Which sender to use</h3>
-        <p>Press Enter to keep the default sender, <code>onboarding@resend.dev</code>. It can only send to the email address you used to sign up for Resend. To send anywhere else, <a href="https://resend.com/docs/knowledge-base/403-error-resend-dev-domain">verify your own domain in Resend</a> and use an address on it.</p>
+        <h3 class="note-title">Which address it uses</h3>
+        <p>Reminders always go from your Gmail account to itself, so there is no sender to pick. To use another account, run <code>gmail connect</code> again.</p>
         <h3 class="note-title">If Windows blocks it</h3>
         <p>Smart App Control can block a <code>resetwatch.exe</code> you built yourself, with the message “An Application Control policy has blocked this file”. ResetWatch cannot work around this.</p>
         <h3 class="note-title">After a restart</h3>
@@ -126,7 +129,7 @@ go build ./cmd/resetwatch
       <p class="part-label">3</p>
       <div class="part-body">
         <h2 id="commands-title">Commands</h2>
-        <p>You need the first two. Run <code>setup</code> again to change your email or which tools are watched.</p>
+        <p>You need the first two. Run <code>setup</code> again to change which tools are watched or which Gmail account is used.</p>
         <table class="commands">
           <thead><tr><th scope="col">Command</th><th scope="col">What it does</th></tr></thead>
           <tbody>
@@ -134,7 +137,10 @@ go build ./cmd/resetwatch
             <tr><th scope="row"><code>watch</code></th><td>Checks usage every minute and sends due emails. Keep it running.</td></tr>
             <tr><th scope="row"><code>status</code></th><td>Shows your last readings. Add <code>--refresh</code> to read fresh usage first.</td></tr>
             <tr><th scope="row"><code>history</code></th><td>Lists reminder emails: sent, waiting or failed.</td></tr>
-            <tr><th scope="row"><code>test-email</code></th><td>Sends one email marked TEST, to check delivery.</td></tr>
+            <tr><th scope="row"><code>gmail connect</code></th><td>Connects, reconnects or changes the Gmail account. Add <code>--no-browser</code> to print the sign-in link.</td></tr>
+            <tr><th scope="row"><code>gmail status</code></th><td>Shows the connected account and whether delivery is paused, without contacting Google.</td></tr>
+            <tr><th scope="row"><code>gmail disconnect</code></th><td>Disconnects Gmail on this computer and cancels unsent reminders.</td></tr>
+            <tr><th scope="row"><code>test-email</code></th><td>Sends one email marked TEST to your Gmail account, to check delivery.</td></tr>
             <tr><th scope="row"><code>version</code></th><td>Prints the version.</td></tr>
           </tbody>
         </table>
@@ -160,7 +166,8 @@ Saved observation; run status --refresh for current limits.</pre>
         <ul class="plain spaced">
           <li><strong>Claude’s usage check is experimental.</strong> It uses the request behind Claude Code’s <code>/usage</code> screen. A Claude Code update may change it. If that happens, Claude emails say “should be back” and keep coming.</li>
           <li><strong>Your computer must be on.</strong> It has to be awake and online with the watcher running. Nothing runs in the cloud.</li>
-          <li><strong>“Sent” means Resend accepted the email.</strong> Whether it reaches your inbox is up to your mail provider.</li>
+          <li><strong>“Sent” means Gmail accepted the email.</strong> If Gmail’s answer is lost, a retry can deliver the same reminder twice; Gmail offers no way to prevent that.</li>
+          <li><strong>Sign-ins can stop working.</strong> If you remove ResetWatch’s access at Google, delivery pauses until you run <code>gmail connect</code>. Usage is still read, and reminders keep their attempts.</li>
           <li><strong>One account per tool.</strong> Two Codex workspaces on the same email address look the same.</li>
           <li><strong>Plans only.</strong> API-key, Bedrock and Vertex accounts have no plan limits to watch.</li>
         </ul>
@@ -177,7 +184,8 @@ Saved observation; run status --refresh for current limits.</pre>
         <ul class="plain">
           <li>Keeps your settings, usage readings and email history in a local SQLite file on your computer.</li>
           <li>Never reads your Codex or Claude credentials. It runs Claude Code with your hooks, plugins and MCP servers turned off.</li>
-          <li>Sends your email address and the email text to Resend over HTTPS, using your own Resend key. The key stays in <code>.env</code> or your environment and is never written to the database.</li>
+          <li>Sends the email through Gmail over HTTPS with send-only permission, from your address to your address. The sign-in stays in your system credential store; it is never written to a file or the database.</li>
+          <li><code>gmail disconnect</code> deletes the local sign-in. To withdraw access at Google too, use <a href="https://myaccount.google.com/permissions">your Google account’s permissions page</a>.</li>
         </ul>
         <p>To report a security problem, see the <a href="https://github.com/ph03iA/resetwatch/blob/main/SECURITY.md">security policy</a>.</p>
       </div>

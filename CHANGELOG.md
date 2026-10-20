@@ -2,6 +2,7 @@
 
 ## Unreleased — 2026-10-16
 
+- Redesigned the website as a plain printed manual that shows real output from the email and status code, in light and dark, and brought it up to date: Codex and Claude, "is back" versus "should be back", the six commands, the sender rule and honest limits.
 - Removed the `connect`, `notify`, `retry` and `demo` commands; `setup` does their job. The commands are now `setup`, `watch`, `status`, `history`, `test-email` and `version`. The README is shorter, with the detailed rules in `docs/details.md`.
 - Claude reset emails now say **is back** when a fresh reading taken after the reset leaves out that window: Claude omits a window until it is used again. The email also names the 5-hour or weekly limit in that case.
 - Claude usage now comes from Claude Code itself: the watcher starts Claude Code with no prompt and sends the experimental `get_usage` request behind `/usage` (the Claude Agent SDK approach), every cycle like Codex. Claude emails can say **is back** from a fresh reading, early resets are detected, and the account is identified. The status-line method is retired: setup and `connect claude` restore any status line an older version replaced, `--replace-statusline` is removed, and `claude-statusline` is a silent no-op for old installs. AGENTS.md records this owner-approved exception to documented-only interfaces.

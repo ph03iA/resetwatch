@@ -17,14 +17,39 @@ import (
 	_ "modernc.org/sqlite"
 )
 
-type DB struct{ db *sql.DB }
+// DB is the state database. legacy marks a version 1 database from the Resend era: its reminders stay
+// readable but nothing is delivered until connecting Gmail upgrades it.
+type DB struct {
+	db     *sql.DB
+	legacy bool
+}
+
+// ErrUpgradeRequired means the state predates Gmail delivery and must be upgraded by connecting Gmail.
+var ErrUpgradeRequired = errors.New("ResetWatch now sends reminders with your Gmail account; stop any older watcher, then run resetwatch setup to connect Gmail and carry your pending reminders over")
 
 type Config struct {
-	To        string `json:"email"`
-	From      string `json:"from"`
-	CodexBin  string `json:"codex_bin,omitempty"`
-	Providers string `json:"providers,omitempty"`
+	CodexBin  string       `json:"codex_bin,omitempty"`
+	Providers string       `json:"providers,omitempty"`
+	Gmail     GmailAccount `json:"gmail"`
+	// LegacyTo and LegacyFrom are the Resend-era recipient and sender, kept only in state that predates Gmail.
+	LegacyTo   string `json:"email,omitempty"`
+	LegacyFrom string `json:"from,omitempty"`
 }
+
+// GmailAccount is the connected Google account. Reminders go from it to itself.
+type GmailAccount struct {
+	Address    string `json:"address,omitempty"`
+	Subject    string `json:"subject,omitempty"`    // Google's stable account ID
+	Credential string `json:"credential,omitempty"` // names the refresh token in the system credential store
+	Paused     string `json:"paused,omitempty"`     // why delivery waits for reconnection
+}
+
+func (g GmailAccount) Connected() bool {
+	return g.Subject != "" && g.Address != "" && g.Credential != ""
+}
+
+// Ready reports whether reminders can be delivered now.
+func (g GmailAccount) Ready() bool { return g.Connected() && g.Paused == "" }
 
 type Alert struct {
 	ID           string    `json:"id"`
@@ -34,6 +59,7 @@ type Alert struct {
 	ResetAt      time.Time `json:"reset_at"`
 	To           string    `json:"email"`
 	From         string    `json:"from"`
+	Gmail        string    `json:"-"` // Google account ID the reminder is bound to; empty for Resend-era reminders
 	State        string    `json:"state"`
 	Attempts     int       `json:"attempts"`
 	FirstAttempt time.Time `json:"first_attempt,omitempty"`
@@ -41,18 +67,20 @@ type Alert struct {
 	LastError    string    `json:"last_error,omitempty"`
 }
 
+// Version 2 renamed the reminder table to notification_alerts and bound each reminder to a Gmail account.
+// The new name keeps an older binary that is still running from claiming Gmail reminders.
 const schema = `
 CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS snapshots (provider TEXT PRIMARY KEY, data TEXT NOT NULL);
-CREATE TABLE IF NOT EXISTS alerts (
+CREATE TABLE IF NOT EXISTS notification_alerts (
  id TEXT PRIMARY KEY, provider TEXT NOT NULL, account_id TEXT NOT NULL,
  window_id TEXT NOT NULL, reset_at INTEGER NOT NULL, recipient TEXT NOT NULL,
  sender TEXT NOT NULL, state TEXT NOT NULL DEFAULT 'pending', attempts INTEGER NOT NULL DEFAULT 0,
  first_attempt INTEGER NOT NULL DEFAULT 0, next_attempt INTEGER NOT NULL,
  lease_until INTEGER NOT NULL DEFAULT 0, last_error TEXT NOT NULL DEFAULT '',
- updated_at INTEGER NOT NULL, payload TEXT NOT NULL DEFAULT '');
-CREATE INDEX IF NOT EXISTS alerts_due ON alerts(state, next_attempt);
-PRAGMA user_version = 1;`
+ updated_at INTEGER NOT NULL, payload TEXT NOT NULL DEFAULT '', gmail_account TEXT NOT NULL DEFAULT '');
+CREATE INDEX IF NOT EXISTS notification_alerts_due ON notification_alerts(state, next_attempt);
+PRAGMA user_version = 2;`
 
 func Open(dir string) (*DB, error) {
 	if err := prepareDirectory(dir); err != nil {
@@ -110,9 +138,12 @@ func initialize(db *sql.DB) (*DB, error) {
 		db.Close()
 		return nil, err
 	}
-	if version > 1 {
+	if version > 2 {
 		db.Close()
 		return nil, errors.New("state database is from a newer ResetWatch; upgrade this binary")
+	}
+	if version == 1 {
+		return &DB{db: db, legacy: true}, nil // upgraded only by connecting Gmail
 	}
 	if _, err := db.ExecContext(ctx, schema); err != nil {
 		db.Close()
@@ -122,6 +153,9 @@ func initialize(db *sql.DB) (*DB, error) {
 }
 
 func (d *DB) Close() error { return d.db.Close() }
+
+// Legacy reports whether the state still awaits the Gmail upgrade.
+func (d *DB) Legacy() bool { return d.legacy }
 
 func (d *DB) Config(ctx context.Context) (Config, error) {
 	return loadConfig(ctx, d.db)

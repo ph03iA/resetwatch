@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"strings"
 	"time"
 
 	"resetwatch/internal/quota"
@@ -17,13 +18,13 @@ func alertID(snapshot quota.Snapshot, window quota.Window, config Config) string
 }
 
 func alertKey(provider, accountID, windowID string, resetAt int64, config Config) string {
-	data, _ := json.Marshal([]any{provider, accountID, windowID, resetAt, config.To, config.From})
+	data, _ := json.Marshal([]any{provider, accountID, windowID, resetAt, "gmail", config.Gmail.Subject})
 	sum := sha256.Sum256(data)
 	return hex.EncodeToString(sum[:])
 }
 
 func (d *DB) Schedule(ctx context.Context, snapshot quota.Snapshot, config Config, now time.Time) error {
-	if config.To == "" || config.From == "" {
+	if !config.Gmail.Connected() {
 		return nil
 	}
 	if err := quota.ValidateSnapshot(snapshot); err != nil {
@@ -46,7 +47,7 @@ func (d *DB) Schedule(ctx context.Context, snapshot quota.Snapshot, config Confi
 }
 
 func schedule(ctx context.Context, tx *sql.Tx, snapshot quota.Snapshot, config Config, now time.Time, newReading bool) error {
-	if config.To == "" || config.From == "" || !config.Selected(snapshot.Provider) {
+	if !config.Gmail.Connected() || !config.Selected(snapshot.Provider) {
 		return nil
 	}
 	if err := quota.ValidateSnapshot(snapshot); err != nil {
@@ -67,9 +68,9 @@ func schedule(ctx context.Context, tx *sql.Tx, snapshot quota.Snapshot, config C
 }
 
 func cancelReplaced(ctx context.Context, tx *sql.Tx, snapshot quota.Snapshot, config Config, now time.Time) error {
-	_, err := tx.ExecContext(ctx, `UPDATE alerts SET state='cancelled',updated_at=? WHERE provider=?
- AND state IN ('pending','retry') AND (account_id<>? OR recipient<>? OR sender<>?)`,
-		now.Unix(), snapshot.Provider, snapshot.AccountID, config.To, config.From)
+	_, err := tx.ExecContext(ctx, `UPDATE notification_alerts SET state='cancelled',updated_at=? WHERE provider=?
+ AND state IN ('pending','retry') AND (account_id<>? OR gmail_account<>?)`,
+		now.Unix(), snapshot.Provider, snapshot.AccountID, config.Gmail.Subject)
 	return err
 }
 
@@ -85,7 +86,7 @@ func cancelMissing(ctx context.Context, tx *sql.Tx, snapshot quota.Snapshot, now
 	if err != nil {
 		return err
 	}
-	_, err = tx.ExecContext(ctx, `UPDATE alerts SET state='cancelled',updated_at=?
+	_, err = tx.ExecContext(ctx, `UPDATE notification_alerts SET state='cancelled',updated_at=?
  WHERE provider=? AND account_id=? AND reset_at>? AND state IN ('pending','retry')
  AND window_id NOT IN (SELECT value FROM json_each(?))`, now.Unix(), snapshot.Provider, snapshot.AccountID, now.Unix(), string(data))
 	return err
@@ -102,12 +103,12 @@ func scheduleWindow(ctx context.Context, tx *sql.Tx, snapshot quota.Snapshot, wi
 	if window.ResetsAt.Before(now.Add(-24 * time.Hour)) {
 		return nil
 	}
-	_, err := tx.ExecContext(ctx, `INSERT INTO alerts
- (id,provider,account_id,window_id,reset_at,recipient,sender,next_attempt,updated_at)
- VALUES(?,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET state='pending',last_error='',updated_at=excluded.updated_at
- WHERE alerts.state='cancelled' AND alerts.reset_at>? AND alerts.attempts<8
- AND (alerts.first_attempt=0 OR alerts.first_attempt>?) AND (alerts.last_error<>? OR ?)`, id, snapshot.Provider, snapshot.AccountID, window.ID,
-		window.ResetsAt.Unix(), config.To, config.From, window.ResetsAt.Unix(), now.Unix(), now.Unix(),
+	_, err := tx.ExecContext(ctx, `INSERT INTO notification_alerts
+ (id,provider,account_id,window_id,reset_at,recipient,sender,gmail_account,next_attempt,updated_at)
+ VALUES(?,?,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET state='pending',last_error='',updated_at=excluded.updated_at
+ WHERE notification_alerts.state='cancelled' AND notification_alerts.reset_at>? AND notification_alerts.attempts<8
+ AND (notification_alerts.first_attempt=0 OR notification_alerts.first_attempt>?) AND (notification_alerts.last_error<>? OR ?)`, id, snapshot.Provider, snapshot.AccountID, window.ID,
+		window.ResetsAt.Unix(), config.Gmail.Address, config.Gmail.Address, config.Gmail.Subject, window.ResetsAt.Unix(), now.Unix(), now.Unix(),
 		now.Add(-23*time.Hour).Unix(), providerDisabled, newReading)
 	return err
 }
@@ -117,20 +118,20 @@ func scheduleWindow(ctx context.Context, tx *sql.Tx, snapshot quota.Snapshot, wi
 // Only a later reset time proves a new window began; a lower percentage alone may be an old reading.
 func releaseEarlyReset(ctx context.Context, tx *sql.Tx, snapshot quota.Snapshot, window quota.Window, now time.Time) error {
 	resetAt := min(snapshot.ObservedAt.Unix(), now.Unix())
-	_, err := tx.ExecContext(ctx, `UPDATE alerts SET reset_at=?,next_attempt=?,updated_at=?
+	_, err := tx.ExecContext(ctx, `UPDATE notification_alerts SET reset_at=?,next_attempt=?,updated_at=?
  WHERE provider=? AND account_id=? AND window_id=? AND reset_at>? AND reset_at<? AND state IN ('pending','retry')`,
 		resetAt, now.Unix(), now.Unix(), snapshot.Provider, snapshot.AccountID, window.ID, now.Unix(), window.ResetsAt.Unix())
 	return err
 }
 
 func cancelSuperseded(ctx context.Context, tx *sql.Tx, snapshot quota.Snapshot, window quota.Window, id string, now time.Time) error {
-	_, err := tx.ExecContext(ctx, `UPDATE alerts SET state='cancelled',updated_at=?
+	_, err := tx.ExecContext(ctx, `UPDATE notification_alerts SET state='cancelled',updated_at=?
  WHERE provider=? AND account_id=? AND window_id=? AND id<>? AND reset_at>?
  AND state IN ('pending','retry')`, now.Unix(), snapshot.Provider, snapshot.AccountID, window.ID, id, now.Unix())
 	return err
 }
 
-const alertColumns = `id,provider,account_id,window_id,reset_at,recipient,sender,state,attempts,first_attempt,next_attempt,last_error`
+const alertColumns = `id,provider,account_id,window_id,reset_at,recipient,sender,gmail_account,state,attempts,first_attempt,next_attempt,last_error`
 
 type scanner interface{ Scan(...any) error }
 
@@ -138,7 +139,7 @@ func scanAlert(row scanner) (Alert, error) {
 	var alert Alert
 	var reset, first, next int64
 	err := row.Scan(&alert.ID, &alert.Provider, &alert.AccountID, &alert.Window, &reset,
-		&alert.To, &alert.From, &alert.State, &alert.Attempts, &first, &next, &alert.LastError)
+		&alert.To, &alert.From, &alert.Gmail, &alert.State, &alert.Attempts, &first, &next, &alert.LastError)
 	alert.ResetAt = time.Unix(reset, 0).UTC()
 	alert.NextAttempt = time.Unix(next, 0).UTC()
 	if first != 0 {
@@ -164,7 +165,7 @@ func (d *DB) Claim(ctx context.Context, now time.Time) (Alert, error) {
 }
 
 func (d *DB) Finish(ctx context.Context, alert Alert, state, reason string, next time.Time, now time.Time) error {
-	result, err := d.db.ExecContext(ctx, `UPDATE alerts SET state=?,last_error=?,next_attempt=?,lease_until=0,updated_at=?
+	result, err := d.db.ExecContext(ctx, `UPDATE notification_alerts SET state=?,last_error=?,next_attempt=?,lease_until=0,updated_at=?
  WHERE id=? AND state='sending' AND attempts=?`, state, reason, next.Unix(), now.Unix(), alert.ID, alert.Attempts)
 	if err != nil {
 		return err
@@ -177,7 +178,11 @@ func (d *DB) Finish(ctx context.Context, alert Alert, state, reason string, next
 }
 
 func (d *DB) History(ctx context.Context, limit int) ([]Alert, error) {
-	rows, err := d.db.QueryContext(ctx, "SELECT "+alertColumns+" FROM alerts ORDER BY updated_at DESC,id LIMIT ?", limit)
+	query := "SELECT " + alertColumns + " FROM notification_alerts ORDER BY updated_at DESC,id LIMIT ?"
+	if d.legacy {
+		query = "SELECT " + strings.Replace(alertColumns, "gmail_account", "''", 1) + " FROM alerts ORDER BY updated_at DESC,id LIMIT ?"
+	}
+	rows, err := d.db.QueryContext(ctx, query, limit)
 	if err != nil {
 		return nil, err
 	}
@@ -193,7 +198,7 @@ func (d *DB) History(ctx context.Context, limit int) ([]Alert, error) {
 	return alerts, rows.Err()
 }
 
-// moveAlerts readdresses undelivered reminders after the email settings change. Each gets a new
+// moveAlerts readdresses undelivered reminders after the Gmail account changes. Each gets a new
 // delivery key and an empty payload; the old entry is cancelled with its frozen message untouched.
 // Reset and due times carry over, so an already-due reminder stays due.
 func moveAlerts(ctx context.Context, tx *sql.Tx, config Config, now time.Time) error {
@@ -214,39 +219,39 @@ func moveAlert(ctx context.Context, tx *sql.Tx, alert Alert, config Config, now 
 		return nil
 	}
 	id := alertKey(alert.Provider, alert.AccountID, alert.Window, alert.ResetAt.Unix(), config)
-	_, err := tx.ExecContext(ctx, `INSERT INTO alerts (id,provider,account_id,window_id,reset_at,recipient,sender,next_attempt,updated_at)
- VALUES(?,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET state='pending',next_attempt=excluded.next_attempt,
+	_, err := tx.ExecContext(ctx, `INSERT INTO notification_alerts (id,provider,account_id,window_id,reset_at,recipient,sender,gmail_account,next_attempt,updated_at)
+ VALUES(?,?,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET state='pending',next_attempt=excluded.next_attempt,
  lease_until=0,last_error='',updated_at=excluded.updated_at
- WHERE alerts.state='cancelled' AND alerts.last_error<>? AND alerts.attempts<8 AND (alerts.first_attempt=0 OR alerts.first_attempt>?) AND alerts.reset_at>?`,
-		id, alert.Provider, alert.AccountID, alert.Window, alert.ResetAt.Unix(), config.To, config.From,
+ WHERE notification_alerts.state='cancelled' AND notification_alerts.last_error<>? AND notification_alerts.attempts<8 AND (notification_alerts.first_attempt=0 OR notification_alerts.first_attempt>?) AND notification_alerts.reset_at>?`,
+		id, alert.Provider, alert.AccountID, alert.Window, alert.ResetAt.Unix(), config.Gmail.Address, config.Gmail.Address, config.Gmail.Subject,
 		alert.NextAttempt.Unix(), now.Unix(), providerDisabled, now.Add(-23*time.Hour).Unix(), now.Add(-24*time.Hour).Unix())
 	if err != nil {
 		return err
 	}
 	var state, reason string
-	if err := tx.QueryRowContext(ctx, "SELECT state,last_error FROM alerts WHERE id=?", id).Scan(&state, &reason); err != nil {
+	if err := tx.QueryRowContext(ctx, "SELECT state,last_error FROM notification_alerts WHERE id=?", id).Scan(&state, &reason); err != nil {
 		return err
 	}
 	if state == "cancelled" && reason == providerDisabled {
 		return cancelMovedAlert(ctx, tx, alert, now)
 	}
 	if state == "failed" || state == "cancelled" {
-		return errors.New("the destination reminder cannot be resumed; notification settings were not changed")
+		return errors.New("a reminder for this Gmail account cannot be resumed; the Gmail connection was not changed")
 	}
 	return cancelMovedAlert(ctx, tx, alert, now)
 }
 
 func cancelMovedAlert(ctx context.Context, tx *sql.Tx, alert Alert, now time.Time) error {
-	_, err := tx.ExecContext(ctx, `UPDATE alerts SET state='cancelled',lease_until=0,last_error='notification settings changed',updated_at=?
+	_, err := tx.ExecContext(ctx, `UPDATE notification_alerts SET state='cancelled',lease_until=0,last_error='Gmail account changed',updated_at=?
  WHERE id=? AND (state IN ('pending','retry') OR (state='sending' AND lease_until<=?))`, now.Unix(), alert.ID, now.Unix())
 	return err
 }
 
 func alertsToMove(ctx context.Context, tx *sql.Tx, config Config, now time.Time) ([]Alert, error) {
-	rows, err := tx.QueryContext(ctx, "SELECT "+alertColumns+` FROM alerts
- WHERE (state IN ('pending','retry') OR (state='sending' AND lease_until<=?)) AND (recipient<>? OR sender<>?)
+	rows, err := tx.QueryContext(ctx, "SELECT "+alertColumns+` FROM notification_alerts
+ WHERE (state IN ('pending','retry') OR (state='sending' AND lease_until<=?)) AND gmail_account<>?
  AND attempts<8 AND (first_attempt=0 OR first_attempt>?) AND reset_at>?
- AND ((provider='codex' AND ?) OR (provider='claude' AND ?))`, now.Unix(), config.To, config.From,
+ AND ((provider='codex' AND ?) OR (provider='claude' AND ?))`, now.Unix(), config.Gmail.Subject,
 		now.Add(-23*time.Hour).Unix(), now.Add(-24*time.Hour).Unix(), config.Selected("codex"), config.Selected("claude"))
 	if err != nil {
 		return nil, err

@@ -124,17 +124,12 @@ func (a *application) activateSetup(ctx context.Context, s *setupState) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	if s.newKey != "" {
-		if err := saveResendEnv(s.newKey); err != nil {
-			return err
-		}
-		fmt.Fprintln(a.out, "API key saved privately in this folder's .env.")
-	}
-	config := store.Config{Providers: s.options.providers, To: s.options.email, From: s.options.from, CodexBin: s.options.binary}
+	config := store.Config{Providers: s.options.providers, CodexBin: s.options.binary, Gmail: s.gmail}
 	if err := a.db.ConfigureSetup(ctx, config, time.Now().UTC()); err != nil {
 		return err
 	}
-	s.activated = true
+	s.activated, s.staged = true, false
+	a.dropReplacedCredential(s.previous.Gmail, s.gmail)
 	a.restoreClaudeStatusLine(ctx)
 	for _, reading := range s.readings {
 		if err := a.db.RecordSnapshot(ctx, reading, time.Now().UTC()); err != nil {
@@ -147,15 +142,13 @@ func (a *application) activateSetup(ctx context.Context, s *setupState) error {
 
 func (a *application) printSetupSummary(ctx context.Context, s *setupState) {
 	fmt.Fprintln(a.out, "\nSetup saved. Providers:", s.options.providers)
-	fmt.Fprintln(a.out, "Reminder email:", s.options.email)
+	fmt.Fprintln(a.out, "Reminders: from and to", s.gmail.Address, "(Gmail)")
 	fmt.Fprintln(a.out, "Email time zone: this computer's ("+zoneLabel(time.Now())+").")
 	if s.emailTested {
-		fmt.Fprintln(a.out, "Email test: accepted by Resend; check your inbox and spam folder.")
+		fmt.Fprintln(a.out, "Email test: accepted by Gmail; check your inbox.")
 	}
-	folder, _ := filepath.Abs(".")
-	fmt.Fprintln(a.out, "Run the watcher from this folder so .env loads:", folder)
-	fmt.Fprintln(a.out, "Start: resetwatch watch")
-	fmt.Fprintln(a.out, "Provider changes apply on the next watcher cycle. Restart a running watcher after changing its API key.")
+	fmt.Fprintln(a.out, "Start: resetwatch watch (keep it running on an awake, online computer)")
+	fmt.Fprintln(a.out, "Provider and Gmail changes apply on the next watcher cycle.")
 }
 
 // zoneLabel names the computer's time zone the way reset emails show it, e.g. "IST, UTC+05:30".

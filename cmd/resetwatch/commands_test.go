@@ -7,6 +7,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"resetwatch/internal/gmailauth"
 )
 
 func testApplication(t *testing.T) (*application, *bytes.Buffer) {
@@ -66,13 +68,15 @@ func TestEmailSettingsRejectBadAddresses(t *testing.T) {
 	}
 }
 
-func TestWatchNeedsResendKey(t *testing.T) {
-	t.Chdir(t.TempDir())
-	app, output := testApplication(t)
+func TestWatchNeedsGmail(t *testing.T) {
+	app, _ := testApplication(t)
+	if err := app.run(context.Background(), []string{"watch", "--once"}); err == nil || !strings.Contains(err.Error(), "connect Gmail first") {
+		t.Fatalf("watch without Gmail must say how to connect, got %v", err)
+	}
 	saveEmail(t, app, "recipient@example.com")
-	output.Reset()
-	if err := app.run(context.Background(), []string{"watch", "--once"}); err == nil || !strings.Contains(err.Error(), "RESEND_API_KEY") {
-		t.Fatalf("expected missing delivery key, got %v", err)
+	// This build carries no Google client, so the real sender cannot start; the error says why.
+	if err := app.run(context.Background(), []string{"watch", "--once"}); !errors.Is(err, gmailauth.ErrNoClient) {
+		t.Fatalf("expected the missing Google client to be reported, got %v", err)
 	}
 }
 

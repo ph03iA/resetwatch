@@ -21,7 +21,7 @@ func TestDeliveryRejectsStaleClaimBeforeSending(t *testing.T) {
 	must(t, err)
 	var logs []string
 	engine.Log = func(message string) { logs = append(logs, message) }
-	err = engine.deliver(ctx, first)
+	err = engine.deliver(ctx, first, &fakeSender{})
 	if !errors.Is(err, sql.ErrNoRows) {
 		t.Fatalf("stale claim did not return the freeze error: %v", err)
 	}
@@ -44,7 +44,7 @@ func TestDeliveryReturnsLeaseLossBeforeLoggingOutcome(t *testing.T) {
 			ctx := context.Background()
 			first := claimDeliveryAlert(t, engine, *now)
 			var current store.Alert
-			engine.Sender = regressionSend(func(ctx context.Context, message notify.Message) error {
+			send := regressionSend(func(ctx context.Context, message notify.Message) error {
 				sender.messages = append(sender.messages, message)
 				*now = now.Add(2 * time.Minute)
 				var err error
@@ -54,7 +54,7 @@ func TestDeliveryReturnsLeaseLossBeforeLoggingOutcome(t *testing.T) {
 			})
 			var logs []string
 			engine.Log = func(message string) { logs = append(logs, message) }
-			err := engine.deliver(ctx, first)
+			err := engine.deliver(ctx, first, send)
 			if err == nil || !strings.Contains(err.Error(), "lease was lost") {
 				t.Fatalf("delivery did not return the completion error: %v", err)
 			}

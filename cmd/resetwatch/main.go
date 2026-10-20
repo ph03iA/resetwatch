@@ -11,6 +11,8 @@ import (
 	"path/filepath"
 	"syscall"
 
+	"golang.org/x/oauth2"
+	"resetwatch/internal/gmailauth"
 	"resetwatch/internal/notify"
 	"resetwatch/internal/quota"
 	"resetwatch/internal/store"
@@ -38,19 +40,18 @@ type application struct {
 	errOut         io.Writer
 	getenv         func(string) string
 	db             *store.DB
-	testSender     notify.Sender
+	testSender     notify.Sender // tests replace the Gmail sender
 	setupTerminal  func() bool
-	setupSecret    func() (string, error)
 	setupReadCodex func(context.Context, string) (quota.Snapshot, error)
-	claude         quota.Provider // tests replace the Claude usage reader
+	claude         quota.Provider                                       // tests replace the Claude usage reader
+	gmailStore     gmailauth.Store                                      // tests replace the system credential store
+	gmailSignIn    func(context.Context, bool) (gmailauth.Grant, error) // tests replace the Google sign-in
+	tokens         map[string]oauth2.TokenSource                        // access tokens per credential, in memory only
 }
 
 func (a *application) run(ctx context.Context, args []string) error {
 	if len(args) == 0 {
 		return a.help(nil)
-	}
-	if args[0] == "test-email" {
-		return a.testEmail(ctx, args[1:])
 	}
 	local := map[string]func([]string) error{
 		"help": a.help, "--help": a.help, "-h": a.help,
@@ -66,6 +67,7 @@ func (a *application) run(ctx context.Context, args []string) error {
 func (a *application) stateCommand(ctx context.Context, args []string) error {
 	commands := map[string]func(context.Context, []string) error{
 		"setup": a.setup, "watch": a.watch, "status": a.status, "history": a.history,
+		"gmail": a.gmail, "test-email": a.testEmail,
 	}
 	command, ok := commands[args[0]]
 	if !ok {
@@ -122,24 +124,25 @@ func (a *application) help(args []string) error {
 	fmt.Fprintln(a.out, `ResetWatch — leave the clock to us.
 
 Usage:
-  resetwatch setup [--providers codex|claude|both] [--email ADDRESS] [--from SENDER]
-                   [--codex-bin PATH] [--test-email] [--non-interactive]
-  resetwatch test-email --email your-resend-account-email [--from SENDER]
+  resetwatch setup [--providers codex|claude|both] [--codex-bin PATH] [--test-email] [--non-interactive]
+  resetwatch gmail connect [--no-browser]
+  resetwatch gmail status [--json]
+  resetwatch gmail disconnect [--yes]
+  resetwatch test-email
   resetwatch watch [--interval 1m] [--once]
   resetwatch status [--provider codex|claude | --all] [--refresh] [--json]
   resetwatch history [--limit 20] [--json]
   resetwatch version
 
-Run setup for guided provider and email configuration; the watcher remains a separate command.
+Run setup for guided provider and Gmail configuration; the watcher remains a separate command.
+Reminders are sent from your connected Gmail account to that same account. ResetWatch asks Google
+only for permission to send email; it never reads your inbox. The sign-in is kept in your system
+credential store (Windows Credential Manager, macOS Keychain or Linux Secret Service).
 Codex quota commands require Codex signed in with ChatGPT. No inference requests are made.
 Claude Pro/Max limits are read from Claude Code (claude on PATH) without sending any prompt.
-Setup asks for a missing Resend key without echo and saves it in .env in your current folder.
-Keep running watch from that folder, or set RESEND_API_KEY in the environment.
-An existing environment key takes priority. The sender must be verified in Resend.
-test-email sends one labeled test immediately without a Codex connection.
-Its default resend.dev sender can send only to your Resend account email.
+test-email sends one labeled test to your Gmail account without checking AI usage.
 Set RESETWATCH_HOME to override the private local state directory.
-Provider changes apply on the next watcher cycle; key changes require a watcher restart.
+Provider and Gmail changes apply on the next watcher cycle.
 The watcher must remain running on an awake, connected computer.
 Emails distinguish scheduled resets from freshly confirmed allowance.`)
 	return nil

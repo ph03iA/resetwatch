@@ -44,22 +44,6 @@ func TestSetupPromptsEOFDoesNotAcceptDefaults(t *testing.T) {
 	}
 }
 
-func TestSetupPromptDoesNotPrefetchSecretInput(t *testing.T) {
-	reader := strings.NewReader("next\nfixture_secret\n")
-	var output bytes.Buffer
-	prompt := setupPrompter{in: reader, out: &output, secret: func() (string, error) { return readSetupLine(reader) }}
-	if _, err := prompt.ask("Next", ""); err != nil {
-		t.Fatal(err)
-	}
-	secret, err := prompt.password("Resend API key")
-	if err != nil || secret != "fixture_secret" {
-		t.Fatalf("normal prompt consumed hidden input: %v", err)
-	}
-	if strings.Contains(output.String(), "fixture_secret") {
-		t.Fatal("hidden input was echoed")
-	}
-}
-
 func TestSetupInputBoundsAndErrors(t *testing.T) {
 	value, err := readSetupLine(strings.NewReader(strings.Repeat("x", maxSetupInput) + "\n"))
 	if err != nil || len(value) != maxSetupInput {
@@ -73,19 +57,6 @@ func TestSetupInputBoundsAndErrors(t *testing.T) {
 	}
 	if _, err := readSetupLine(setupFailureReader{}); err == nil || strings.Contains(err.Error(), "fixture_secret") {
 		t.Fatal("read failure accepted or leaked")
-	}
-}
-
-func TestSetupSecretFailureIsRedacted(t *testing.T) {
-	var output bytes.Buffer
-	prompt := setupPrompter{out: &output, secret: func() (string, error) { return "", errors.New("fixture_secret") }}
-	_, err := prompt.password("Key")
-	if err == nil || strings.Contains(err.Error(), "fixture_secret") || strings.Contains(output.String(), "fixture_secret") {
-		t.Fatal("hidden read failure accepted or leaked")
-	}
-	prompt.secret = func() (string, error) { return strings.Repeat("x", maxSetupInput+1), nil }
-	if _, err := prompt.password("Key"); err == nil {
-		t.Fatal("oversize hidden input accepted")
 	}
 }
 
@@ -141,38 +112,11 @@ func TestSetupPromptContextCancelsBlockedRead(t *testing.T) {
 	assertSetupCancelled(t, result)
 }
 
-func TestSetupPromptContextCancelsHiddenInput(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
-	t.Cleanup(cancel)
-	started, release := make(chan struct{}), make(chan struct{})
-	t.Cleanup(func() { close(release) })
-	prompt := setupPrompter{ctx: ctx, out: io.Discard, secret: func() (string, error) {
-		close(started)
-		<-release
-		return "fixture_secret", nil
-	}}
-	result := make(chan error, 1)
-	go func() {
-		_, err := prompt.password("Key")
-		result <- err
-	}()
-	select {
-	case <-started:
-	case <-time.After(3 * time.Second):
-		t.Fatal("hidden prompt did not start reading")
-	}
-	cancel()
-	assertSetupCancelled(t, result)
-}
-
 func TestSetupPromptCancelledContextDoesNotRead(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	prompt := setupPrompter{ctx: ctx, out: io.Discard, secret: func() (string, error) {
-		t.Error("canceled prompt read secret input")
-		return "", nil
-	}}
-	if _, err := prompt.password("Key"); !errors.Is(err, errSetupCancelled) {
+	prompt := setupPrompter{ctx: ctx, in: setupFailureReader{}, out: io.Discard}
+	if _, err := prompt.ask("Next", ""); !errors.Is(err, errSetupCancelled) {
 		t.Fatalf("already canceled context was ignored: %v", err)
 	}
 }

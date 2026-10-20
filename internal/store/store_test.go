@@ -34,7 +34,7 @@ func TestStatePersistsAcrossReopen(t *testing.T) {
 	}
 	alert, err := db.Claim(ctx, now.Add(time.Hour))
 	must(t, err)
-	if alert.Attempts != 1 || alert.To != config.To || alert.AccountID != snapshot.AccountID {
+	if alert.Attempts != 1 || alert.To != config.Gmail.Address || alert.AccountID != snapshot.AccountID {
 		t.Fatalf("persisted alert was not claimable: %#v", alert)
 	}
 	must(t, db.Finish(ctx, alert, "sent", "", now, now))
@@ -155,8 +155,7 @@ func TestScheduleCancelsOldAccountRecipientAndSender(t *testing.T) {
 		edit func(*quota.Snapshot, *Config)
 	}{
 		{"account", func(s *quota.Snapshot, c *Config) { s.AccountID = "different-account-hash" }},
-		{"recipient", func(s *quota.Snapshot, c *Config) { c.To = "different@example.test" }},
-		{"sender", func(s *quota.Snapshot, c *Config) { c.From = "other@example.test" }},
+		{"gmail account", func(s *quota.Snapshot, c *Config) { c.Gmail = gmailAccount("different") }},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -237,8 +236,8 @@ func TestLeaseRecoversAndRejectsStaleCompletion(t *testing.T) {
 }
 
 func TestFreezeMessagePreservesExactRetryPayloadAcrossReopen(t *testing.T) {
-	for name, canonical := range map[string]bool{"legacy sender": false, "canonical sender": true} {
-		t.Run(name, func(t *testing.T) {
+	for _, zone := range []string{"2030-01-02 4:30 PM IST", "2030-01-02 11:00 AM UTC"} {
+		t.Run(zone, func(t *testing.T) {
 			ctx := context.Background()
 			dir := t.TempDir()
 			db := openTestDB(t, dir)
@@ -247,8 +246,8 @@ func TestFreezeMessagePreservesExactRetryPayloadAcrossReopen(t *testing.T) {
 			must(t, db.Schedule(ctx, testSnapshot(now, due, 100), testConfig(), now))
 			alert, err := db.Claim(ctx, due)
 			must(t, err)
-			initial := notify.Message{CanonicalSender: canonical, Key: alert.ID, To: alert.To, From: alert.From, Provider: alert.Provider,
-				Window: alert.Window, ResetAt: alert.ResetAt, OtherLimit: true, LocalResetAt: "2030-01-02 4:30 PM IST"}
+			initial := notify.Message{Key: alert.ID, To: alert.To, From: alert.From, Provider: alert.Provider,
+				Window: alert.Window, ResetAt: alert.ResetAt, OtherLimit: true, LocalResetAt: zone, MIME: "frozen MIME " + zone}
 			frozen, err := db.FreezeMessage(ctx, alert, initial)
 			must(t, err)
 			firstPayload := storedPayload(t, db, alert.ID)
@@ -259,8 +258,7 @@ func TestFreezeMessagePreservesExactRetryPayloadAcrossReopen(t *testing.T) {
 			must(t, err)
 			changed := initial
 			changed.Confirmed, changed.OtherLimit = true, false
-			changed.LocalResetAt = "2030-01-02 11:00 AM UTC"
-			changed.CanonicalSender = !canonical
+			changed.LocalResetAt, changed.MIME = "2030-01-03 9:00 AM UTC", "re-rendered MIME"
 			retried, err := db.FreezeMessage(ctx, alert, changed)
 			must(t, err)
 			if !reflect.DeepEqual(frozen, retried) || firstPayload != storedPayload(t, db, alert.ID) {
@@ -270,29 +268,30 @@ func TestFreezeMessagePreservesExactRetryPayloadAcrossReopen(t *testing.T) {
 	}
 }
 
+// openTestDB opens state with the test Gmail account connected, unless the directory already has settings.
 func openTestDB(t *testing.T, dir string) *DB {
 	t.Helper()
 	db, err := Open(dir)
 	must(t, err)
 	t.Cleanup(func() { _ = db.Close() })
+	if config, err := db.Config(context.Background()); err == nil && !config.Gmail.Connected() && config.Providers == "" {
+		must(t, db.SaveConfig(context.Background(), testConfig()))
+	}
 	return db
 }
 
 func testConfig() Config {
-	return Config{To: "person@example.test", From: "ResetWatch <alerts@example.test>", CodexBin: "codex-native"}
+	return Config{Gmail: gmailAccount("person"), CodexBin: "codex-native"}
 }
 
-// setEmail changes only the email settings, the way rerunning setup with the same providers does.
-func setEmail(ctx context.Context, db *DB, to, from string, now time.Time) error {
-	config, err := db.Config(ctx)
-	if err != nil {
-		return err
-	}
-	config.To, config.From = to, from
-	if config.Providers == "" {
-		config.Providers = "both"
-	}
-	return db.ConfigureSetup(ctx, config, now)
+// gmailAccount is a connected Google account named after its address.
+func gmailAccount(name string) GmailAccount {
+	return GmailAccount{Address: name + "@example.test", Subject: "google-" + name, Credential: "cred-" + name}
+}
+
+// setGmail connects another (or the same) Google account, the way gmail connect does.
+func setGmail(ctx context.Context, db *DB, name string, now time.Time) error {
+	return db.ConnectGmail(ctx, gmailAccount(name), now)
 }
 
 func storeTime() time.Time { return time.Date(2030, 1, 2, 10, 0, 0, 0, time.UTC) }
@@ -318,7 +317,7 @@ func assertStates(t *testing.T, db *DB, want map[string]int) {
 func storedPayload(t *testing.T, db *DB, id string) string {
 	t.Helper()
 	var payload string
-	must(t, db.db.QueryRow("SELECT payload FROM alerts WHERE id=?", id).Scan(&payload))
+	must(t, db.db.QueryRow("SELECT payload FROM notification_alerts WHERE id=?", id).Scan(&payload))
 	return payload
 }
 
@@ -342,19 +341,19 @@ func TestAddressChangeKeepsDueReminderDueAndFrozenPayload(t *testing.T) {
 	must(t, err)
 	must(t, db.Finish(ctx, old, "retry", "temporary", due, due))
 	moved := testConfig()
-	moved.To = "new@example.test"
-	must(t, setEmail(ctx, db, moved.To, moved.From, due))
-	must(t, setEmail(ctx, db, moved.To, moved.From, due)) // same settings again: nothing more to move
-	if config, err := db.Config(ctx); err != nil || config.To != moved.To {
+	moved.Gmail = gmailAccount("new")
+	must(t, setGmail(ctx, db, "new", due))
+	must(t, setGmail(ctx, db, "new", due)) // same account again: nothing more to move
+	if config, err := db.Config(ctx); err != nil || config.Gmail.Address != moved.Gmail.Address {
 		t.Fatalf("settings were not saved with the moved reminder: %#v %v", config, err)
 	}
 	alert, err := db.Claim(ctx, due)
 	must(t, err)
-	if alert.To != moved.To || alert.ID == old.ID || alert.Attempts != 1 || !alert.ResetAt.Equal(old.ResetAt) {
+	if alert.To != moved.Gmail.Address || alert.ID == old.ID || alert.Attempts != 1 || !alert.ResetAt.Equal(old.ResetAt) {
 		t.Fatalf("due reminder was not moved intact: %#v", alert)
 	}
 	var state, payload string
-	must(t, db.db.QueryRowContext(ctx, "SELECT state,payload FROM alerts WHERE id=?", old.ID).Scan(&state, &payload))
+	must(t, db.db.QueryRowContext(ctx, "SELECT state,payload FROM notification_alerts WHERE id=?", old.ID).Scan(&state, &payload))
 	if state != "cancelled" || payload == "" {
 		t.Fatalf("old reminder must be cancelled with its frozen payload kept: %s %q", state, payload)
 	}

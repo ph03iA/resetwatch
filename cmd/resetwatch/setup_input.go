@@ -14,10 +14,9 @@ const maxSetupInput = 4096
 var errSetupCancelled = errors.New("setup canceled")
 
 type setupPrompter struct {
-	ctx    context.Context
-	in     io.Reader
-	out    io.Writer
-	secret func() (string, error)
+	ctx context.Context
+	in  io.Reader
+	out io.Writer
 }
 
 func (p setupPrompter) ask(prompt, defaultValue string) (string, error) {
@@ -98,26 +97,6 @@ func (p setupPrompter) printChoices(prompt string, options []string) error {
 	return nil
 }
 
-func (p setupPrompter) password(prompt string) (string, error) {
-	if _, err := fmt.Fprint(p.out, prompt+": "); err != nil {
-		return "", errors.New("could not write setup prompt")
-	}
-	if p.secret == nil {
-		return p.read(func() (string, error) { return readSetupLine(p.in) })
-	}
-	value, err := p.read(p.secret)
-	if err != nil {
-		return "", errSetupCancelled
-	}
-	if _, err := fmt.Fprintln(p.out); err != nil {
-		return "", errors.New("could not write setup prompt")
-	}
-	if len(value) > maxSetupInput {
-		return "", errors.New("setup input exceeds the 4096 byte limit")
-	}
-	return value, nil
-}
-
 type setupInputResult struct {
 	value string
 	err   error
@@ -146,7 +125,7 @@ func (p setupPrompter) read(read func() (string, error)) (string, error) {
 	}
 }
 
-// Read directly so a normal prompt cannot consume bytes intended for hidden input.
+// Read byte by byte so a prompt never consumes input meant for the next one.
 func readSetupLine(reader io.Reader) (string, error) {
 	var content []byte
 	var next [1]byte

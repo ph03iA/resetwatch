@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"time"
 
-	"resetwatch/internal/notify"
 	"resetwatch/internal/quota"
 	"resetwatch/internal/store"
 	"resetwatch/internal/watch"
@@ -94,16 +93,18 @@ func (a *application) watch(ctx context.Context, args []string) error {
 	if err != nil {
 		return err
 	}
-	if err := notify.ValidateAddresses(config.To, config.From); err != nil {
-		return errors.New("configure email first: run resetwatch setup")
+	if a.db.Legacy() {
+		return store.ErrUpgradeRequired
 	}
-	key, err := a.resendAPIKey()
-	if err != nil {
-		return err
+	if !config.Gmail.Connected() {
+		return errors.New("connect Gmail first: run resetwatch setup")
 	}
 	engine := watch.Engine{DB: a.db, ProviderFactory: func(current store.Config) []quota.Provider { return a.watchProviders(ctx, current) },
-		Sender: notify.Resend{APIKey: key}, Log: func(message string) { fmt.Fprintln(a.errOut, time.Now().Format(time.RFC3339), message) }}
-	fmt.Fprintln(a.errOut, "Watching reset windows. Ctrl+C stops safely.")
+		Mailer: a.mailer, Log: func(message string) { fmt.Fprintln(a.errOut, time.Now().Format(time.RFC3339), message) }}
+	fmt.Fprintln(a.errOut, "Watching reset windows; reminders go to "+config.Gmail.Address+". Ctrl+C stops safely.")
+	if config.Gmail.Paused != "" {
+		fmt.Fprintln(a.errOut, "Email delivery is paused ("+config.Gmail.Paused+"); run resetwatch gmail connect. Usage is still read.")
+	}
 	return engine.Run(ctx, *interval, *once)
 }
 

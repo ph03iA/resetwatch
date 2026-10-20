@@ -18,9 +18,11 @@ import (
 type fakeProvider struct {
 	snapshot quota.Snapshot
 	err      error
+	reads    int
 }
 
 func (provider *fakeProvider) Read(context.Context) (quota.Snapshot, error) {
+	provider.reads++
 	return provider.snapshot, provider.err
 }
 
@@ -148,7 +150,7 @@ func TestPermanentDeliveryFailureDoesNotRetry(t *testing.T) {
 	must(t, engine.Step(ctx))
 	*now = now.Add(time.Hour)
 	provider.err = errors.New("synthetic quota outage")
-	sender.errors = []error{syntheticDeliveryError(t, http.StatusUnauthorized, "")}
+	sender.errors = []error{syntheticDeliveryError(t, http.StatusBadRequest, "")}
 	_ = engine.Step(ctx)
 	assertHistory(t, engine.DB, "failed", 1)
 	*now = now.Add(time.Minute)
@@ -163,16 +165,10 @@ func TestDueDeliveryCancelsChangedSettingsAndAccount(t *testing.T) {
 		name string
 		edit func(*testing.T, *Engine, *fakeProvider)
 	}{
-		{"recipient", func(t *testing.T, e *Engine, p *fakeProvider) {
+		{"gmail account", func(t *testing.T, e *Engine, p *fakeProvider) {
 			config, err := e.DB.Config(context.Background())
 			must(t, err)
-			config.To = "other@example.test"
-			must(t, e.DB.SaveConfig(context.Background(), config))
-		}},
-		{"sender", func(t *testing.T, e *Engine, p *fakeProvider) {
-			config, err := e.DB.Config(context.Background())
-			must(t, err)
-			config.From = "other@example.test"
+			config.Gmail = testGmail("other")
 			must(t, e.DB.SaveConfig(context.Background(), config))
 		}},
 		{"account", func(t *testing.T, e *Engine, p *fakeProvider) {
@@ -259,17 +255,27 @@ func testEngine(t *testing.T) (*Engine, *fakeProvider, *fakeSender, *time.Time) 
 	db, err := store.Open(t.TempDir())
 	must(t, err)
 	t.Cleanup(func() { _ = db.Close() })
-	must(t, db.SaveConfig(context.Background(), store.Config{To: "person@example.test", From: "alerts@example.test"}))
+	must(t, db.SaveConfig(context.Background(), store.Config{Gmail: testGmail("person")}))
 	now := watchTime()
 	provider := &fakeProvider{snapshot: watchSnapshot(now, now.Add(time.Hour), 100)}
 	sender := &fakeSender{}
-	engine := &Engine{DB: db, Provider: provider, Sender: sender, Now: func() time.Time { return now }}
+	engine := &Engine{DB: db, Provider: provider, Mailer: senderMailer(sender), Now: func() time.Time { return now }}
 	return engine, provider, sender, &now
+}
+
+// testGmail is a connected Google account named after its address.
+func testGmail(name string) store.GmailAccount {
+	return store.GmailAccount{Address: name + "@example.test", Subject: "google-" + name, Credential: "cred-" + name}
+}
+
+// senderMailer resolves every Gmail account to the given sender.
+func senderMailer(sender notify.Sender) func(context.Context, store.Config) (notify.Sender, error) {
+	return func(context.Context, store.Config) (notify.Sender, error) { return sender, nil }
 }
 
 func composeAlert(reset time.Time) store.Alert {
 	return store.Alert{ID: strings.Repeat("a", 64), Provider: "codex", AccountID: "account-hash",
-		Window: "codex:primary", ResetAt: reset, To: "person@example.test", From: "alerts@example.test"}
+		Window: "codex:primary", ResetAt: reset, To: "person@example.test", From: "person@example.test", Gmail: "google-person"}
 }
 
 func watchSnapshot(observed, reset time.Time, used float64) quota.Snapshot {
@@ -302,7 +308,8 @@ func syntheticDeliveryError(t *testing.T, code int, retryAfter string) error {
 		return &http.Response{StatusCode: code, Header: http.Header{"Retry-After": []string{retryAfter}},
 			Body: io.NopCloser(strings.NewReader(`{}`)), Request: request}, nil
 	})}
-	service := notify.Resend{APIKey: "re_fake_test_key", Client: client}
+	service := notify.Gmail{Address: "person@example.test", Credential: "cred-person", Client: client,
+		Token: func(context.Context) (string, error) { return "access-token", nil }}
 	alert := composeAlert(watchTime())
 	err := service.Send(context.Background(), compose(alert, nil, watchTime()))
 	if err == nil {

@@ -11,14 +11,15 @@ import (
 
 func setupStatusFixture(t *testing.T) (*application, func() string) {
 	t.Helper()
-	app, output, _ := setupTestApplication(t, "re_fixture")
+	f := setupTestApplication(t)
+	app, output := f.app, f.output
 	db, err := store.Open(app.getenv("RESETWATCH_HOME"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer db.Close()
 	ctx := context.Background()
-	if err := db.SaveConfig(ctx, store.Config{Providers: "both", To: "fixture@example.test", From: "sender@example.test"}); err != nil {
+	if err := db.SaveConfig(ctx, store.Config{Providers: "both", Gmail: store.GmailAccount{Address: "person@example.test", Subject: "google-person", Credential: "cred-person"}}); err != nil {
 		t.Fatal(err)
 	}
 	if err := db.SaveSnapshot(ctx, setupTestSnapshot("codex")); err != nil {

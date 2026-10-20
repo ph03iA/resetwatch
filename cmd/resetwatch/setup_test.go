@@ -11,11 +11,21 @@ import (
 	"testing"
 	"time"
 
+	"resetwatch/internal/gmailauth"
 	"resetwatch/internal/quota"
 	"resetwatch/internal/store"
 )
 
-func setupTestApplication(t *testing.T, key string) (*application, *bytes.Buffer, *capturedTestSender) {
+type setupFixture struct {
+	app         *application
+	output      *bytes.Buffer
+	sender      *capturedTestSender
+	credentials *memoryCredentials
+	google      *fakeGoogle
+}
+
+// setupTestApplication is a fresh install with fake Claude, Gmail and credential store; nothing is connected.
+func setupTestApplication(t *testing.T) setupFixture {
 	t.Helper()
 	t.Chdir(t.TempDir())
 	output := &bytes.Buffer{}
@@ -24,14 +34,24 @@ func setupTestApplication(t *testing.T, key string) (*application, *bytes.Buffer
 	app := &application{in: strings.NewReader(""), out: output, errOut: output, testSender: sender,
 		setupTerminal: func() bool { return false }, claude: fakeClaude{snapshot: setupTestSnapshot("claude")},
 		getenv: func(name string) string {
-			return map[string]string{"RESETWATCH_HOME": state, "CLAUDE_CONFIG_DIR": claude, "RESEND_API_KEY": key}[name]
+			return map[string]string{"RESETWATCH_HOME": state, "CLAUDE_CONFIG_DIR": claude}[name]
 		},
 	}
-	return app, output, sender
+	credentials, google := useFakeGmail(app, "person")
+	return setupFixture{app: app, output: output, sender: sender, credentials: credentials, google: google}
+}
+
+// connected is a fixture whose Gmail account is already connected, as noninteractive setup requires.
+func connected(t *testing.T) setupFixture {
+	t.Helper()
+	f := setupTestApplication(t)
+	runOK(t, f.app, "gmail", "connect")
+	f.google.signIns = 0
+	return f
 }
 
 func setupTestArguments(provider string) []string {
-	return []string{"setup", "--providers", provider, "--email", "fixture@example.test", "--from", "Fixture <sender@example.test>", "--non-interactive"}
+	return []string{"setup", "--providers", provider, "--non-interactive"}
 }
 
 func setupTestCodex(t *testing.T, app *application) string {
@@ -50,62 +70,133 @@ func setupTestSnapshot(provider string) quota.Snapshot {
 		Windows: []quota.Window{{ID: "primary", UsedPercent: 25, ResetsAt: now.Add(time.Hour), Duration: 5 * time.Hour}}}
 }
 
-func TestSetupInteractiveClaudeSavesKeyOnce(t *testing.T) {
+func TestSetupInteractiveConnectsGmailOnce(t *testing.T) {
 	originalZone := time.Local
 	t.Cleanup(func() { time.Local = originalZone })
 	time.Local = time.FixedZone("IST", 5*3600+30*60)
-	app, output, sender := setupTestApplication(t, "")
-	app.setupTerminal = func() bool { return true }
-	app.in = strings.NewReader("2\nfixture@example.test\n\nn\n")
-	secretReads := 0
-	app.setupSecret = func() (string, error) { secretReads++; return "re_fixture_secret", nil }
-	if err := app.run(context.Background(), []string{"setup"}); err != nil {
+	f := setupTestApplication(t)
+	f.app.setupTerminal = func() bool { return true }
+	f.app.in = strings.NewReader("2\nn\n")
+	if err := f.app.run(context.Background(), []string{"setup"}); err != nil {
 		t.Fatal(err)
 	}
-	assertSetupConfig(t, app, "claude")
-	assertSetupKeySaved(t)
-	if secretReads != 1 {
-		t.Fatal("hidden key was not requested exactly once")
+	assertSetupConfig(t, f.app, "claude")
+	first := savedGmail(t, f.app)
+	if f.google.signIns != 1 || f.credentials.secrets[first.Credential] != "refresh-person" {
+		t.Fatalf("setup must sign in once and save the credential: %d sign-ins, %v", f.google.signIns, f.credentials.secrets)
 	}
-	if len(sender.messages) != 0 || strings.Contains(output.String(), "re_fixture_secret") {
-		t.Fatal("setup sent an unrequested email or exposed its key")
-	}
-	if !strings.Contains(output.String(), "Claude: signed in; usage reading OK") || !strings.Contains(output.String(), "IST, UTC+05:30") {
-		t.Fatal("setup did not truthfully describe Claude readiness and email timezone")
-	}
-	app.in = strings.NewReader("\n\n\nn\n")
-	if err := app.run(context.Background(), []string{"setup"}); err != nil {
+	assertFirstSetupOutput(t, f)
+	f.app.in = strings.NewReader("\n\nn\n") // keep providers, keep the connected account, no test
+	if err := f.app.run(context.Background(), []string{"setup"}); err != nil {
 		t.Fatal(err)
 	}
-	if secretReads != 1 {
-		t.Fatal("rerunning setup requested the saved key again")
+	if f.google.signIns != 1 || savedGmail(t, f.app) != first {
+		t.Fatal("rerunning setup and keeping the account must not sign in again")
 	}
 }
 
-func assertSetupKeySaved(t *testing.T) {
+func assertFirstSetupOutput(t *testing.T, f setupFixture) {
 	t.Helper()
-	key, err := loadResendEnv()
-	if err != nil || key != "re_fixture_secret" {
-		t.Fatalf("hidden key was not saved: %v", err)
+	out := f.output.String()
+	if len(f.sender.messages) != 0 || strings.Contains(out, "refresh-person") {
+		t.Fatal("setup sent an unrequested email or printed the refresh token")
+	}
+	for _, want := range []string{"Claude: signed in; usage reading OK", "IST, UTC+05:30", "person@example.test"} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("setup output lacks %q: %s", want, out)
+		}
+	}
+}
+
+func TestSetupInteractiveCanSwitchGmailAccount(t *testing.T) {
+	f := connected(t)
+	old := savedGmail(t, f.app)
+	f.app.setupTerminal = func() bool { return true }
+	f.google.name = "other"
+	f.app.in = strings.NewReader("2\nn\n") // connect a different account, no test
+	if err := f.app.run(context.Background(), []string{"setup", "--providers", "claude"}); err != nil {
+		t.Fatal(err)
+	}
+	if account := savedGmail(t, f.app); account.Address != "other@example.test" || f.credentials.secrets[old.Credential] != "" {
+		t.Fatalf("switching must activate the new account and delete the old credential: %+v %v", account, f.credentials.secrets)
+	}
+}
+
+func TestSetupFailedSignInKeepsTheExistingConnection(t *testing.T) {
+	f := connected(t)
+	before := savedGmail(t, f.app)
+	f.app.setupTerminal = func() bool { return true }
+	f.google.err = gmailauth.ErrDenied
+	f.app.in = strings.NewReader("2\n")
+	if err := f.app.run(context.Background(), []string{"setup", "--providers", "claude"}); !errors.Is(err, gmailauth.ErrDenied) {
+		t.Fatalf("want the sign-in failure, got %v", err)
+	}
+	if savedGmail(t, f.app) != before || len(f.credentials.secrets) != 1 {
+		t.Fatal("a failed sign-in changed the working connection")
+	}
+}
+
+func TestSetupActivationFailureRemovesTheStagedCredential(t *testing.T) {
+	f := connected(t)
+	runOK(t, f.app, "setup", "--providers", "claude", "--non-interactive")
+	reset := time.Now().Add(time.Minute).Unix()
+	claudeLine(t, f.app, "", map[string][2]int64{"five_hour": {100, reset}})
+	if _, err := auditStateDB(t, f.app).Claim(context.Background(), time.Now().Add(2*time.Minute).UTC()); err != nil {
+		t.Fatal(err) // a live delivery lease blocks account changes
+	}
+	f.app.setupTerminal = func() bool { return true }
+	f.google.name = "other"
+	f.app.in = strings.NewReader("2\n")
+	if err := f.app.run(context.Background(), []string{"setup", "--providers", "claude"}); err == nil || !strings.Contains(err.Error(), "delivery is in progress") {
+		t.Fatalf("want the delivery-in-progress refusal, got %v", err)
+	}
+	if savedGmail(t, f.app).Address != "person@example.test" || len(f.credentials.secrets) != 1 {
+		t.Fatalf("the staged credential must be removed and the old account kept: %v", f.credentials.secrets)
+	}
+}
+
+func TestSetupNonInteractiveNeedsAWorkingGmailConnection(t *testing.T) {
+	f := setupTestApplication(t)
+	if err := f.app.run(context.Background(), setupTestArguments("claude")); err == nil || !strings.Contains(err.Error(), "gmail connect") {
+		t.Fatalf("noninteractive setup without Gmail must explain gmail connect, got %v", err)
+	}
+	if f.google.signIns != 0 {
+		t.Fatal("noninteractive setup must never open a sign-in")
+	}
+	assertSetupInactive(t, f.app)
+	g := connected(t)
+	if err := auditStateDB(t, g.app).PauseGmail(context.Background(), savedGmail(t, g.app).Credential, "revoked"); err != nil {
+		t.Fatal(err)
+	}
+	if err := g.app.run(context.Background(), setupTestArguments("claude")); err == nil {
+		t.Fatal("a paused connection is not usable for noninteractive setup")
+	}
+}
+
+func TestSetupRejectsRemovedAddressFlags(t *testing.T) {
+	f := connected(t)
+	for _, flag := range []string{"--email", "--from"} {
+		err := f.app.run(context.Background(), append(setupTestArguments("claude"), flag, "someone@example.test"))
+		if !errors.Is(err, errAddressFlags) {
+			t.Fatalf("%s must explain the Gmail migration, got %v", flag, err)
+		}
 	}
 }
 
 func TestSetupNonInteractiveBothPersistsReadings(t *testing.T) {
-	app, _, sender := setupTestApplication(t, "re_fixture_secret")
-	binary := setupTestCodex(t, app)
-	args := append(setupTestArguments("both"), "--codex-bin", binary)
-	if err := app.run(context.Background(), args); err != nil {
+	f := connected(t)
+	binary := setupTestCodex(t, f.app)
+	if err := f.app.run(context.Background(), append(setupTestArguments("both"), "--codex-bin", binary)); err != nil {
 		t.Fatal(err)
 	}
-	assertSetupConfig(t, app, "both")
-	reading := readSetupSnapshot(t, app, "codex")
-	if reading.AccountID != "fixture-account" || len(sender.messages) != 0 {
+	assertSetupConfig(t, f.app, "both")
+	if readSetupSnapshot(t, f.app, "codex").AccountID != "fixture-account" || len(f.sender.messages) != 0 {
 		t.Fatal("setup did not save Codex's initial reading or sent an unrequested email")
 	}
-	if readSetupSnapshot(t, app, "claude").Provider != "claude" {
+	if readSetupSnapshot(t, f.app, "claude").Provider != "claude" {
 		t.Fatal("setup did not save Claude's initial reading")
 	}
-	if _, err := os.Stat(filepath.Join(app.getenv("CLAUDE_CONFIG_DIR"), "settings.json")); !os.IsNotExist(err) {
+	if _, err := os.Stat(filepath.Join(f.app.getenv("CLAUDE_CONFIG_DIR"), "settings.json")); !os.IsNotExist(err) {
 		t.Fatal("setup must not write Claude settings")
 	}
 }
@@ -120,23 +211,22 @@ func TestSetupProviderFailureRetryAndSkip(t *testing.T) {
 	}
 	for _, test := range cases {
 		t.Run(test.name, func(t *testing.T) {
-			app, _, _ := setupTestApplication(t, "re_fixture")
-			app.setupTerminal = func() bool { return true }
-			app.in = strings.NewReader(test.input)
-			binary := setupTestCodex(t, app)
+			f := setupTestApplication(t)
+			f.app.setupTerminal = func() bool { return true }
+			f.app.in = strings.NewReader(test.input)
+			binary := setupTestCodex(t, f.app)
 			reads := 0
-			app.setupReadCodex = func(context.Context, string) (quota.Snapshot, error) {
+			f.app.setupReadCodex = func(context.Context, string) (quota.Snapshot, error) {
 				reads++
 				if reads == 1 {
 					return quota.Snapshot{}, errors.New("fixture authentication failed")
 				}
 				return setupTestSnapshot("codex"), nil
 			}
-			args := []string{"setup", "--providers", "both", "--email", "fixture@example.test", "--from", "sender@example.test", "--codex-bin", binary}
-			if err := app.run(context.Background(), args); err != nil {
+			if err := f.app.run(context.Background(), []string{"setup", "--providers", "both", "--codex-bin", binary}); err != nil {
 				t.Fatal(err)
 			}
-			assertSetupConfig(t, app, test.providers)
+			assertSetupConfig(t, f.app, test.providers)
 			if reads != test.wantReads {
 				t.Fatalf("provider reads = %d; want %d", reads, test.wantReads)
 			}
@@ -146,25 +236,23 @@ func TestSetupProviderFailureRetryAndSkip(t *testing.T) {
 
 func TestSetupProviderFailureCancelOrSkipOnlyProvider(t *testing.T) {
 	for _, input := range []string{"3\n", "2\n"} {
-		app, _, sender := setupTestApplication(t, "re_fixture")
-		app.setupTerminal = func() bool { return true }
-		app.in = strings.NewReader(input)
-		binary := setupTestCodex(t, app)
-		app.setupReadCodex = func(context.Context, string) (quota.Snapshot, error) {
+		f := setupTestApplication(t)
+		f.app.setupTerminal = func() bool { return true }
+		f.app.in = strings.NewReader(input)
+		binary := setupTestCodex(t, f.app)
+		f.app.setupReadCodex = func(context.Context, string) (quota.Snapshot, error) {
 			return quota.Snapshot{}, errors.New("fixture unavailable")
 		}
-		args := []string{"setup", "--providers", "codex", "--email", "fixture@example.test", "--from", "sender@example.test", "--codex-bin", binary}
-		if err := app.run(context.Background(), args); err == nil {
+		if err := f.app.run(context.Background(), []string{"setup", "--providers", "codex", "--codex-bin", binary}); err == nil {
 			t.Fatal("canceled/empty provider setup succeeded")
 		}
-		assertSetupInactive(t, app)
-		if len(sender.messages) != 0 {
-			t.Fatal("canceled setup sent email")
+		assertSetupInactive(t, f.app)
+		if len(f.sender.messages) != 0 || f.google.signIns != 0 {
+			t.Fatal("a canceled setup sent email or signed in to Google")
 		}
 	}
 }
 
-// installOldClaudeStatusLine reproduces what older versions did: replace the user's status line.
 // installOldClaudeStatusLine reproduces what older versions left behind: ResetWatch's status line
 // in the settings and a backup of the user's original entry.
 func installOldClaudeStatusLine(t *testing.T, app *application, original []byte) {
@@ -212,13 +300,13 @@ func assertOriginalClaudeStatusLine(t *testing.T, app *application) {
 }
 
 func TestSetupRestoresStatusLineFromOlderVersions(t *testing.T) {
-	app, _, _ := setupTestApplication(t, "re_fixture")
-	installOldClaudeStatusLine(t, app, []byte(`{"statusLine":{"type":"command","command":"original-status"},"theme":"fixture"}`))
-	if err := app.run(context.Background(), setupTestArguments("claude")); err != nil {
+	f := connected(t)
+	installOldClaudeStatusLine(t, f.app, []byte(`{"statusLine":{"type":"command","command":"original-status"},"theme":"fixture"}`))
+	if err := f.app.run(context.Background(), setupTestArguments("claude")); err != nil {
 		t.Fatal(err)
 	}
-	assertSetupConfig(t, app, "claude")
-	assertOriginalClaudeStatusLine(t, app)
+	assertSetupConfig(t, f.app, "claude")
+	assertOriginalClaudeStatusLine(t, f.app)
 }
 
 func TestSetupOptionalEmailAndFailureRetainsConfiguration(t *testing.T) {
@@ -233,94 +321,77 @@ func TestSetupOptionalEmailAndFailureRetainsConfiguration(t *testing.T) {
 	}
 	for _, test := range cases {
 		t.Run(test.name, func(t *testing.T) {
-			app, _, sender := setupTestApplication(t, "re_fixture_secret")
+			f := connected(t)
 			args := setupTestArguments("claude")
 			if test.request {
 				args = append(args, "--test-email")
 			}
 			if test.fail {
-				sender.err = errors.New("fixture email rejection")
+				f.sender.err = errors.New("fixture email rejection")
 			}
-			err := app.run(context.Background(), args)
+			err := f.app.run(context.Background(), args)
 			if (err != nil) != test.fail {
 				t.Fatalf("test-email result mismatch: %v", err)
 			}
-			assertSetupConfig(t, app, "claude")
-			if len(sender.messages) != test.sends {
-				t.Fatalf("email attempts = %d; want %d", len(sender.messages), test.sends)
+			assertSetupConfig(t, f.app, "claude")
+			if len(f.sender.messages) != test.sends {
+				t.Fatalf("email attempts = %d; want %d", len(f.sender.messages), test.sends)
 			}
 		})
 	}
 }
 
 func TestSetupInteractiveEmailFailureCanBeDeclined(t *testing.T) {
-	app, _, sender := setupTestApplication(t, "re_fixture")
-	app.setupTerminal = func() bool { return true }
-	app.in = strings.NewReader("y\nn\n")
-	sender.err = errors.New("fixture email rejection")
-	args := []string{"setup", "--providers", "claude", "--email", "fixture@example.test", "--from", "sender@example.test"}
-	if err := app.run(context.Background(), args); err != nil {
+	f := setupTestApplication(t)
+	f.app.setupTerminal = func() bool { return true }
+	f.app.in = strings.NewReader("y\nn\n")
+	f.sender.err = errors.New("fixture email rejection")
+	if err := f.app.run(context.Background(), []string{"setup", "--providers", "claude"}); err != nil {
 		t.Fatal(err)
 	}
-	assertSetupConfig(t, app, "claude")
-	if len(sender.messages) != 1 {
-		t.Fatal("interactive email confirmation did not send exactly one attempt")
-	}
-}
-
-func TestSetupNonInteractiveMissingKeyNeverInstalls(t *testing.T) {
-	app, _, _ := setupTestApplication(t, "")
-	if err := app.run(context.Background(), setupTestArguments("claude")); err == nil || !strings.Contains(err.Error(), "RESEND_API_KEY") {
-		t.Fatalf("missing noninteractive key was not rejected: %v", err)
-	}
-	assertSetupInactive(t, app)
-	path := filepath.Join(app.getenv("CLAUDE_CONFIG_DIR"), "settings.json")
-	if _, err := os.Stat(path); !os.IsNotExist(err) {
-		t.Fatal("missing key changed Claude settings")
+	assertSetupConfig(t, f.app, "claude")
+	if len(f.sender.messages) != 1 || f.sender.messages[0].To != "person@example.test" {
+		t.Fatal("the interactive test must send exactly one attempt to the Gmail account")
 	}
 }
 
 func TestSetupEOFAndControlCancelBeforeChanges(t *testing.T) {
-	for _, input := range []string{"", "2\n", "2\nfixture@example.test\n", "\x03"} {
-		app, _, sender := setupTestApplication(t, "re_fixture")
-		app.setupTerminal = func() bool { return true }
-		app.in = strings.NewReader(input)
-		if err := app.run(context.Background(), []string{"setup"}); !errors.Is(err, errSetupCancelled) {
+	for _, input := range []string{"", "\x03"} {
+		f := setupTestApplication(t)
+		f.app.setupTerminal = func() bool { return true }
+		f.app.in = strings.NewReader(input)
+		if err := f.app.run(context.Background(), []string{"setup"}); !errors.Is(err, errSetupCancelled) {
 			t.Fatalf("incomplete setup was accepted: %v", err)
 		}
-		assertSetupInactive(t, app)
-		if len(sender.messages) != 0 {
-			t.Fatal("canceled setup sent email")
+		assertSetupInactive(t, f.app)
+		if len(f.sender.messages) != 0 || f.google.signIns != 0 {
+			t.Fatal("a canceled setup sent email or signed in")
 		}
 	}
-}
-
-func TestSetupInvalidExplicitEmailReturnsWithoutRetry(t *testing.T) {
-	app, _, _ := setupTestApplication(t, "re_fixture")
-	app.setupTerminal = func() bool { return true }
-	args := []string{"setup", "--providers", "claude", "--email", "invalid", "--from", "sender@example.test"}
-	if err := app.run(context.Background(), args); err == nil || errors.Is(err, errSetupCancelled) {
-		t.Fatalf("invalid explicit email did not fail validation directly: %v", err)
+	f := connected(t)
+	f.app.setupTerminal = func() bool { return true }
+	f.app.in = strings.NewReader("3\n") // cancel at the Gmail account choice
+	if err := f.app.run(context.Background(), []string{"setup", "--providers", "claude"}); !errors.Is(err, errSetupCancelled) {
+		t.Fatalf("cancelling at the Gmail choice must cancel setup, got %v", err)
 	}
-	assertSetupInactive(t, app)
+	if connectSavedConfig(t, f.app).Providers != "" {
+		t.Fatal("a canceled setup saved providers")
+	}
 }
 
 func TestSetupClaudeReadFailureLeavesConfigInactive(t *testing.T) {
-	app, output, _ := setupTestApplication(t, "re_fixture_secret")
-	app.claude = fakeClaude{err: quota.ErrNoClaudeLimits}
-	if err := app.run(context.Background(), setupTestArguments("claude")); err == nil {
+	f := setupTestApplication(t)
+	f.app.claude = fakeClaude{err: quota.ErrNoClaudeLimits}
+	if err := f.app.run(context.Background(), setupTestArguments("claude")); err == nil {
 		t.Fatal("setup accepted Claude without plan limits")
 	}
-	assertSetupInactive(t, app)
-	if strings.Contains(output.String(), "re_fixture_secret") {
-		t.Fatal("Claude failure exposed the key")
-	}
+	assertSetupInactive(t, f.app)
 }
 
 func assertSetupConfig(t *testing.T, app *application, provider string) {
 	t.Helper()
 	config := connectSavedConfig(t, app)
-	if config.Providers != provider || config.To != "fixture@example.test" {
+	if config.Providers != provider || config.Gmail.Address != "person@example.test" {
 		t.Fatalf("setup configuration = %#v", config)
 	}
 }
@@ -328,7 +399,7 @@ func assertSetupConfig(t *testing.T, app *application, provider string) {
 func assertSetupInactive(t *testing.T, app *application) {
 	t.Helper()
 	config := connectSavedConfig(t, app)
-	if config.Providers != "" || config.To != "" {
+	if config.Providers != "" || config.Gmail.Connected() {
 		t.Fatalf("failed setup activated configuration: %#v", config)
 	}
 }

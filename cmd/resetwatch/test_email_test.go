@@ -3,11 +3,12 @@ package main
 import (
 	"context"
 	"errors"
-	"os"
 	"strings"
 	"testing"
 
+	"resetwatch/internal/gmailauth"
 	"resetwatch/internal/notify"
+	"resetwatch/internal/quota"
 )
 
 type capturedTestSender struct {
@@ -20,107 +21,76 @@ func (s *capturedTestSender) Send(_ context.Context, message notify.Message) err
 	return s.err
 }
 
-func testEmailApplication(t *testing.T) (*application, *capturedTestSender) {
+// testEmailApplication has Gmail connected and counts any quota read, which test-email must never make.
+func testEmailApplication(t *testing.T) (*application, *capturedTestSender, *int) {
 	t.Helper()
 	app, _ := testApplication(t)
-	app.getenv = func(key string) string {
-		if key == "RESEND_API_KEY" {
-			return "re_fake_test_key"
-		}
-		t.Fatalf("test-email unexpectedly accessed environment variable %q", key)
-		return ""
-	}
+	useFakeGmail(app, "person")
+	runOK(t, app, "gmail", "connect")
+	reads := 0
+	app.claude = countingClaude{reads: &reads}
 	sender := &capturedTestSender{}
 	app.testSender = sender
-	return app, sender
+	return app, sender, &reads
 }
 
-func TestEmailSendsExplicitTestWithoutState(t *testing.T) {
-	app, sender := testEmailApplication(t)
-	args := []string{"test-email", "--email", "recipient@example.com"}
+type countingClaude struct{ reads *int }
+
+func (c countingClaude) Read(context.Context) (quota.Snapshot, error) {
+	*c.reads++
+	return quota.Snapshot{}, errors.New("test-email must not read usage")
+}
+
+func TestEmailSendsOneLabeledTestToTheConnectedAccount(t *testing.T) {
+	app, sender, reads := testEmailApplication(t)
 	for range 2 {
-		if err := app.run(context.Background(), args); err != nil {
-			t.Fatal(err)
-		}
+		runOK(t, app, "test-email")
 	}
-	if len(sender.messages) != 2 || app.db != nil {
-		t.Fatal("expected one send per invocation without opening the state database")
+	if len(sender.messages) != 2 || *reads != 0 {
+		t.Fatalf("want one send per invocation and no quota reads: %d sends, %d reads", len(sender.messages), *reads)
 	}
-	assertTestEmailFields(t, sender.messages[0])
-	assertDistinctTestEmailKeys(t, sender.messages)
-}
-
-func assertTestEmailFields(t *testing.T, message notify.Message) {
-	t.Helper()
-	if !message.Test || message.To != "recipient@example.com" || message.From != "ResetWatch <onboarding@resend.dev>" {
+	message := sender.messages[0]
+	if !message.Test || message.To != "person@example.test" || message.From != "person@example.test" || message.MIME == "" {
 		t.Fatalf("unexpected test message: %#v", message)
 	}
-}
-
-func assertDistinctTestEmailKeys(t *testing.T, messages []notify.Message) {
-	t.Helper()
-	if messages[0].Key == "" || messages[0].Key == messages[1].Key {
-		t.Fatal("separate explicit invocations require distinct message keys")
+	if sender.messages[0].Key == sender.messages[1].Key {
+		t.Fatal("separate invocations need distinct message keys")
+	}
+	if history := claudeAlerts(t, app); len(history) != 0 {
+		t.Fatalf("test-email must not create reminders: %+v", history)
 	}
 }
 
-func TestEmailValidationDoesNotSend(t *testing.T) {
-	cases := [][]string{
-		{"test-email"},
-		{"test-email", "--email", "invalid"},
-		{"test-email", "--email", "recipient@example.com", "--from", "invalid"},
-		{"test-email", "--email", "recipient@example.com\r\nBcc: other@example.com"},
-		{"test-email", "--email", "recipient@example.com", "extra"},
+func TestEmailNeedsGmailAndRejectsRemovedFlags(t *testing.T) {
+	app, _ := testApplication(t)
+	useFakeGmail(app, "person")
+	if err := app.run(context.Background(), []string{"test-email"}); err == nil || !strings.Contains(err.Error(), "gmail connect") {
+		t.Fatalf("test-email without Gmail must say how to connect, got %v", err)
 	}
-	for _, args := range cases {
-		t.Run(strings.Join(args, " "), func(t *testing.T) {
-			app, sender := testEmailApplication(t)
-			if err := app.run(context.Background(), args); err == nil {
-				t.Fatal("expected invalid input error")
-			}
-			if len(sender.messages) != 0 {
-				t.Fatal("invalid input sent an email")
-			}
-		})
+	connectedApp, sender, _ := testEmailApplication(t)
+	for _, args := range [][]string{{"test-email", "--email", "a@example.test"}, {"test-email", "--from", "a@example.test"}, {"test-email", "extra"}} {
+		if err := connectedApp.run(context.Background(), args); err == nil {
+			t.Errorf("%v must fail", args)
+		}
 	}
-}
-
-func TestEmailRequiresAPIKey(t *testing.T) {
-	t.Chdir(t.TempDir())
-	app, sender := testEmailApplication(t)
-	app.getenv = func(string) string { return "" }
-	err := app.run(context.Background(), []string{"test-email", "--email", "recipient@example.com"})
-	if err == nil || !strings.Contains(err.Error(), "RESEND_API_KEY") || len(sender.messages) != 0 {
-		t.Fatalf("missing key was not rejected before sending: %v", err)
+	if len(sender.messages) != 0 {
+		t.Fatal("rejected input sent an email")
 	}
 }
 
 func TestEmailFailureIsNotRetried(t *testing.T) {
-	app, sender := testEmailApplication(t)
-	sender.err = errors.New("simulated email service rejection")
-	err := app.run(context.Background(), []string{"test-email", "--email", "recipient@example.com", "--from", "alerts@example.com"})
+	app, sender, _ := testEmailApplication(t)
+	sender.err = errors.New("simulated Gmail rejection")
+	err := app.run(context.Background(), []string{"test-email"})
 	if !errors.Is(err, sender.err) || len(sender.messages) != 1 {
 		t.Fatalf("expected one failed attempt: %v", err)
 	}
-	if sender.messages[0].From != "alerts@example.com" {
-		t.Fatal("explicit sender was ignored")
-	}
 }
 
-func TestEmailMissingKeyDoesNotCreateState(t *testing.T) {
-	t.Chdir(t.TempDir())
-	app, _ := testApplication(t)
-	dir := t.TempDir() + "/unused-state"
-	app.getenv = func(key string) string {
-		if key == "RESETWATCH_HOME" {
-			return dir
-		}
-		return ""
-	}
-	if err := app.run(context.Background(), []string{"test-email", "--email", "recipient@example.com"}); err == nil {
-		t.Fatal("expected missing API key")
-	}
-	if _, err := os.Stat(dir); !os.IsNotExist(err) {
-		t.Fatalf("test-email touched local state: %v", err)
+func TestEmailWithoutAGoogleClientExplainsTheBuild(t *testing.T) {
+	app, _, _ := testEmailApplication(t)
+	app.testSender = nil // use the real Gmail path, which needs the embedded Google client
+	if err := app.run(context.Background(), []string{"test-email"}); !errors.Is(err, gmailauth.ErrNoClient) {
+		t.Fatalf("a build without a Google client must say so, got %v", err)
 	}
 }

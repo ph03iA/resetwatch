@@ -22,7 +22,7 @@ func TestRecordSnapshotRollsBackFailedSchedulingAndRetries(t *testing.T) {
 	must(t, db.SaveConfig(ctx, testConfig()))
 	now := storeTime()
 	snapshot := claudeAuditSnapshot(now, now.Add(time.Hour), 100)
-	_, err := db.db.Exec(`CREATE TRIGGER fail_alert BEFORE INSERT ON alerts BEGIN SELECT RAISE(FAIL,'synthetic scheduling failure'); END`)
+	_, err := db.db.Exec(`CREATE TRIGGER fail_alert BEFORE INSERT ON notification_alerts BEGIN SELECT RAISE(FAIL,'synthetic scheduling failure'); END`)
 	must(t, err)
 	if err := db.RecordSnapshot(ctx, snapshot, now); err == nil {
 		t.Fatal("expected synthetic scheduling failure")
@@ -56,7 +56,7 @@ func TestConcurrentClaudeWindowsSurviveFirstEmailSetup(t *testing.T) {
 	if len(saved.Windows) != 2 {
 		t.Fatalf("concurrent callbacks lost a window: %+v", saved)
 	}
-	must(t, setEmail(ctx, db, testConfig().To, testConfig().From, now))
+	must(t, setGmail(ctx, db, "person", now))
 	assertStates(t, db, map[string]int{"pending": 2})
 }
 
@@ -100,7 +100,7 @@ func TestNotificationChangeRecoversExpiredClaimWithoutRewritingOldPayload(t *tes
 	payload := storedPayload(t, db, old.ID)
 	expired := due.Add(3 * time.Minute)
 	must(t, db.RecordSnapshot(ctx, claudeAuditSnapshot(expired, expired.Add(5*time.Hour), 2), expired))
-	must(t, setEmail(ctx, db, "new@example.test", config.From, expired))
+	must(t, setGmail(ctx, db, "new", expired))
 	moved, err := db.Claim(ctx, expired)
 	must(t, err)
 	if moved.To != "new@example.test" || moved.ID == old.ID || !moved.ResetAt.Equal(old.ResetAt) {
@@ -129,8 +129,8 @@ func TestReturningToCancelledDestinationPreservesItsFrozenRetry(t *testing.T) {
 	must(t, err)
 	payload := storedPayload(t, db, old.ID)
 	must(t, db.Finish(ctx, old, "retry", "synthetic transient failure", due, due))
-	must(t, setEmail(ctx, db, "new@example.test", config.From, due))
-	must(t, setEmail(ctx, db, config.To, config.From, due))
+	must(t, setGmail(ctx, db, "new", due))
+	must(t, setGmail(ctx, db, "person", due))
 	resumed, err := db.Claim(ctx, due)
 	must(t, err)
 	if resumed.ID != old.ID || resumed.Attempts != 2 || !resumed.FirstAttempt.Equal(old.FirstAttempt) {
@@ -150,13 +150,13 @@ func TestFailedDestinationRollsBackNotificationChange(t *testing.T) {
 	snapshot := claudeAuditSnapshot(now, now.Add(time.Hour), 100)
 	must(t, db.RecordSnapshot(ctx, snapshot, now))
 	destination := config
-	destination.To = "failed@example.test"
+	destination.Gmail = gmailAccount("failed")
 	id := alertID(snapshot, snapshot.Windows[0], destination)
-	_, err := db.db.Exec(`INSERT INTO alerts(id,provider,account_id,window_id,reset_at,recipient,sender,state,next_attempt,updated_at)
- VALUES(?,?,?,?,?,?,?,'failed',?,?)`, id, snapshot.Provider, snapshot.AccountID, snapshot.Windows[0].ID,
-		snapshot.Windows[0].ResetsAt.Unix(), destination.To, destination.From, now.Unix(), now.Unix())
+	_, err := db.db.Exec(`INSERT INTO notification_alerts(id,provider,account_id,window_id,reset_at,recipient,sender,gmail_account,state,next_attempt,updated_at)
+ VALUES(?,?,?,?,?,?,?,?,'failed',?,?)`, id, snapshot.Provider, snapshot.AccountID, snapshot.Windows[0].ID,
+		snapshot.Windows[0].ResetsAt.Unix(), destination.Gmail.Address, destination.Gmail.Address, destination.Gmail.Subject, now.Unix(), now.Unix())
 	must(t, err)
-	if err := setEmail(ctx, db, destination.To, destination.From, now); err == nil {
+	if err := setGmail(ctx, db, "failed", now); err == nil {
 		t.Fatal("a failed destination was silently revived")
 	}
 	saved, err := db.Config(ctx)

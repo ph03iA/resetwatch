@@ -31,8 +31,7 @@ type settingsChange struct {
 
 func notificationChanges() []settingsChange {
 	return []settingsChange{
-		{"recipient", func(config *store.Config) { config.To = "replacement@example.test" }},
-		{"sender", func(config *store.Config) { config.From = "replacement-sender@example.test" }},
+		{"gmail account", func(config *store.Config) { config.Gmail = testGmail("replacement") }},
 	}
 }
 
@@ -53,7 +52,7 @@ func TestObserveSchedulesWithSettingsChangedDuringRead(t *testing.T) {
 			must(t, err)
 			history, err := engine.DB.History(ctx, 10)
 			must(t, err)
-			if len(history) != 1 || history[0].To != updated.To || history[0].From != updated.From {
+			if len(history) != 1 || history[0].To != updated.Gmail.Address || history[0].From != updated.Gmail.Address {
 				t.Fatalf("scheduled stale notification settings at %s: %#v", *now, history)
 			}
 		})
@@ -81,7 +80,7 @@ func TestStepCancelsExpiredLeaseAfterSettingsChangeDuringRead(t *testing.T) {
 			})
 			must(t, engine.Step(ctx))
 			for _, message := range sender.messages {
-				if message.To != updated.To || message.From != updated.From {
+				if message.To != updated.Gmail.Address || message.From != updated.Gmail.Address {
 					t.Fatalf("sent using superseded settings: %#v", message)
 				}
 			}
@@ -105,10 +104,10 @@ func TestStepReloadsSettingsBetweenDeliveries(t *testing.T) {
 			must(t, engine.DB.Schedule(ctx, snapshot, config, *now))
 			provider.err = errors.New("synthetic quota outage")
 			change.edit(&config)
-			engine.Sender = regressionSend(func(ctx context.Context, message notify.Message) error {
+			engine.Mailer = senderMailer(regressionSend(func(ctx context.Context, message notify.Message) error {
 				sender.messages = append(sender.messages, message)
 				return engine.DB.SaveConfig(ctx, config)
-			})
+			}))
 			if err := engine.Step(ctx); !errors.Is(err, provider.err) {
 				t.Fatalf("unexpected cycle error: %v", err)
 			}
@@ -161,7 +160,7 @@ func TestDeliveryFailsClosedWhenSettingsCannotBeRead(t *testing.T) {
 	db, err := store.Open(dir)
 	must(t, err)
 	t.Cleanup(func() { _ = db.Close() })
-	config := store.Config{To: "person@example.test", From: "alerts@example.test"}
+	config := store.Config{Gmail: testGmail("person")}
 	must(t, db.SaveConfig(ctx, config))
 	now := watchTime()
 	snapshot := watchSnapshot(now.Add(-time.Minute), now, 100)
@@ -175,8 +174,8 @@ func TestDeliveryFailsClosedWhenSettingsCannotBeRead(t *testing.T) {
 	_, err = writer.ExecContext(ctx, "UPDATE settings SET value=? WHERE key='config'", "invalid JSON")
 	must(t, err)
 	sender := &fakeSender{}
-	engine := Engine{DB: db, Sender: sender, Now: func() time.Time { return now }}
-	err = engine.deliver(ctx, alert)
+	engine := Engine{DB: db, Mailer: senderMailer(sender), Now: func() time.Time { return now }}
+	err = engine.deliver(ctx, alert, sender)
 	var syntaxError *json.SyntaxError
 	if !errors.As(err, &syntaxError) {
 		t.Fatalf("settings read error was hidden: %v", err)

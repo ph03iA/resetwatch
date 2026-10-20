@@ -75,7 +75,7 @@ func exhaustRegressionAlert(t *testing.T, db *DB, snapshot quota.Snapshot, now t
 }
 
 func scanRegressionAlert(db *DB, id string, alert *Alert) error {
-	loaded, err := scanAlert(db.db.QueryRowContext(context.Background(), "SELECT "+alertColumns+" FROM alerts WHERE id=?", id))
+	loaded, err := scanAlert(db.db.QueryRowContext(context.Background(), "SELECT "+alertColumns+" FROM notification_alerts WHERE id=?", id))
 	*alert = loaded
 	return err
 }

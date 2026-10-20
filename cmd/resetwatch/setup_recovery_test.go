@@ -13,7 +13,7 @@ import (
 )
 
 func TestSetupRestoresDeselectedClaudeBeforeInitialCodexPersistenceFailure(t *testing.T) {
-	app, _, _ := setupTestApplication(t, "re_fixture")
+	app := connected(t).app
 	settings := filepath.Join(app.getenv("CLAUDE_CONFIG_DIR"), "settings.json")
 	if err := os.MkdirAll(filepath.Dir(settings), 0700); err != nil {
 		t.Fatal(err)

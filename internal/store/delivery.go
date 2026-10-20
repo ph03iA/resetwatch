@@ -12,15 +12,18 @@ func claimSelected(ctx context.Context, tx *sql.Tx, now time.Time) (Alert, error
 	if err != nil {
 		return Alert{}, err
 	}
+	if !config.Gmail.Ready() {
+		return Alert{}, sql.ErrNoRows // delivery waits for a working Gmail connection
+	}
 	if err := cancelDisabled(ctx, tx, config, now); err != nil {
 		return Alert{}, err
 	}
 	if err := failExhausted(ctx, tx, now); err != nil {
 		return Alert{}, err
 	}
-	query := `UPDATE alerts SET state='sending',attempts=attempts+1,lease_until=?,updated_at=?,
+	query := `UPDATE notification_alerts SET state='sending',attempts=attempts+1,lease_until=?,updated_at=?,
  first_attempt=CASE WHEN first_attempt=0 THEN ? ELSE first_attempt END
- WHERE id=(SELECT id FROM alerts WHERE attempts<8 AND
+ WHERE id=(SELECT id FROM notification_alerts WHERE attempts<8 AND
  ((provider='codex' AND ?) OR (provider='claude' AND ?)) AND
  ((state IN ('pending','retry') AND next_attempt<=?) OR (state='sending' AND lease_until<=?))
  ORDER BY next_attempt,id LIMIT 1) RETURNING ` + alertColumns
@@ -29,7 +32,7 @@ func claimSelected(ctx context.Context, tx *sql.Tx, now time.Time) (Alert, error
 }
 
 func failExhausted(ctx context.Context, tx *sql.Tx, now time.Time) error {
-	_, err := tx.ExecContext(ctx, `UPDATE alerts SET state='failed',last_error='exhausted eight delivery attempts',lease_until=0,updated_at=?
+	_, err := tx.ExecContext(ctx, `UPDATE notification_alerts SET state='failed',last_error='exhausted eight delivery attempts',lease_until=0,updated_at=?
  WHERE attempts>=8 AND ((state IN ('pending','retry') AND next_attempt<=?) OR (state='sending' AND lease_until<=?))`,
 		now.Unix(), now.Unix(), now.Unix())
 	return err
@@ -49,11 +52,14 @@ func (d *DB) ValidateDelivery(ctx context.Context, alert Alert, now time.Time) e
 	if !config.Selected(alert.Provider) {
 		return errors.New(providerDisabled)
 	}
-	if alert.To != config.To || alert.From != config.From {
-		return errors.New("notification settings changed")
+	if !config.Gmail.Ready() {
+		return errors.New("Gmail delivery is paused or disconnected")
+	}
+	if alert.Gmail != config.Gmail.Subject {
+		return errors.New("Gmail account changed")
 	}
 	var active bool
-	err = tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM alerts
+	err = tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM notification_alerts
  WHERE id=? AND state='sending' AND attempts=? AND lease_until>?)`, alert.ID, alert.Attempts, now.Unix()).Scan(&active)
 	if err != nil {
 		return err

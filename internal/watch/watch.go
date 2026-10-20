@@ -17,9 +17,11 @@ type Engine struct {
 	DB              *store.DB
 	Provider        quota.Provider
 	ProviderFactory func(store.Config) []quota.Provider
-	Sender          notify.Sender
-	Now             func() time.Time
-	Log             func(string)
+	// Mailer returns a sender for the configured Gmail account, checking its credential first. It is resolved
+	// every cycle, so account changes apply without restarting the watcher.
+	Mailer func(context.Context, store.Config) (notify.Sender, error)
+	Now    func() time.Time
+	Log    func(string)
 }
 
 func (e *Engine) clock() time.Time {
@@ -79,7 +81,20 @@ func (e *Engine) observe(ctx context.Context, provider quota.Provider) (*quota.S
 	return &snapshot, nil
 }
 
+// errPaused ends a delivery pass after the Gmail sign-in stopped working.
+var errPaused = errors.New("Gmail delivery paused")
+
+// deliverDue sends due reminders. Without a working Gmail connection it claims nothing, while quota
+// readings carry on, so reminders wait instead of using up their attempts.
 func (e *Engine) deliverDue(ctx context.Context) error {
+	config, err := e.DB.Config(ctx)
+	if err != nil || !config.Gmail.Ready() {
+		return err
+	}
+	sender, err := e.Mailer(ctx, config)
+	if err != nil {
+		return e.pause(ctx, err)
+	}
 	for range 50 {
 		alert, err := e.DB.Claim(ctx, e.clock())
 		if errors.Is(err, sql.ErrNoRows) {
@@ -88,14 +103,32 @@ func (e *Engine) deliverDue(ctx context.Context) error {
 		if err != nil {
 			return err
 		}
-		if err := e.deliver(ctx, alert); err != nil {
-			return err
+		if err := e.deliver(ctx, alert, sender); err != nil {
+			return ignorePaused(err)
 		}
 	}
 	return nil
 }
 
-func (e *Engine) deliver(ctx context.Context, alert store.Alert) error {
+func ignorePaused(err error) error {
+	if errors.Is(err, errPaused) {
+		return nil
+	}
+	return err
+}
+
+// pause records an authorization failure against the credential that failed; other errors (an
+// unreachable Google, a locked credential store) just end this cycle.
+func (e *Engine) pause(ctx context.Context, err error) error {
+	failure, ok := notify.AuthorizationFailure(err)
+	if !ok {
+		return err
+	}
+	e.log("Email delivery paused: " + failure.Error())
+	return e.DB.PauseGmail(ctx, failure.Credential, failure.Reason)
+}
+
+func (e *Engine) deliver(ctx context.Context, alert store.Alert, sender notify.Sender) error {
 	config, err := e.DB.Config(ctx)
 	if err != nil {
 		return err
@@ -103,26 +136,40 @@ func (e *Engine) deliver(ctx context.Context, alert store.Alert) error {
 	if reason := e.cancelReason(ctx, alert, config); reason != "" {
 		return e.DB.Finish(ctx, alert, "cancelled", reason, e.clock(), e.clock())
 	}
-	return e.sendAlert(ctx, alert)
+	return e.sendAlert(ctx, alert, sender)
 }
 
-func (e *Engine) sendAlert(ctx context.Context, alert store.Alert) error {
-	message, err := e.DB.FreezeMessage(ctx, alert, compose(alert, e.alertSnapshot(ctx, alert), e.clock()))
+func (e *Engine) sendAlert(ctx context.Context, alert store.Alert, sender notify.Sender) error {
+	prepared, err := notify.Prepare(compose(alert, e.alertSnapshot(ctx, alert), e.clock()), e.clock())
+	if err != nil {
+		return err
+	}
+	message, err := e.DB.FreezeMessage(ctx, alert, prepared)
 	if err != nil {
 		return err
 	}
 	if err := e.DB.ValidateDelivery(ctx, alert, e.clock()); err != nil {
 		return err
 	}
-	err = e.Sender.Send(ctx, message)
-	if err != nil {
-		return e.recordFailure(ctx, alert, err)
+	if err := sender.Send(ctx, message); err != nil {
+		return e.sendFailed(ctx, alert, err)
 	}
 	if err := e.DB.Finish(ctx, alert, "sent", "", e.clock(), e.clock()); err != nil {
 		return err
 	}
-	e.log("Reset email accepted by email provider: " + alert.ID[:12])
+	e.log("Reset email accepted by Gmail: " + alert.ID[:12])
 	return nil
+}
+
+// sendFailed gives the attempt back when the sign-in failed, then pauses; other failures follow the retry schedule.
+func (e *Engine) sendFailed(ctx context.Context, alert store.Alert, sendErr error) error {
+	if _, ok := notify.AuthorizationFailure(sendErr); !ok {
+		return e.recordFailure(ctx, alert, sendErr)
+	}
+	if err := e.DB.ReleaseDelivery(ctx, alert, e.clock()); err != nil {
+		return err
+	}
+	return errors.Join(e.pause(ctx, sendErr), errPaused)
 }
 
 // alertSnapshot returns the provider's last saved reading, which this cycle's poll just recorded;
@@ -139,8 +186,8 @@ func (e *Engine) cancelReason(ctx context.Context, alert store.Alert, config sto
 	if !config.Selected(alert.Provider) {
 		return "provider disabled"
 	}
-	if alert.To != config.To || alert.From != config.From {
-		return "notification settings changed"
+	if alert.Gmail != config.Gmail.Subject {
+		return "Gmail account changed"
 	}
 	if e.clock().Sub(alert.ResetAt) >= 24*time.Hour {
 		return "reset is more than 24 hours old"
@@ -159,7 +206,7 @@ func (e *Engine) cancelReason(ctx context.Context, alert store.Alert, config sto
 }
 
 func compose(alert store.Alert, snapshot *quota.Snapshot, now time.Time) notify.Message {
-	message := notify.Message{Key: alert.ID, To: alert.To, From: alert.From, CanonicalSender: true,
+	message := notify.Message{Key: alert.ID, To: alert.To, From: alert.From,
 		Provider: alert.Provider, Window: alert.Window, ResetAt: alert.ResetAt, Duration: windowDuration(snapshot, alert),
 		LocalResetAt: alert.ResetAt.Local().Format("2006-01-02 3:04 PM MST")}
 	if !observedAfterReset(snapshot, alert, now) {

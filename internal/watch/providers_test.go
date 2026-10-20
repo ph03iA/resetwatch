@@ -82,7 +82,7 @@ func TestExpiredLeaseIsRecheckedBeforeExternalSend(t *testing.T) {
 	ctx := context.Background()
 	alert := claimDeliveryAlert(t, engine, *now)
 	*now = now.Add(2 * time.Minute)
-	if err := engine.deliver(ctx, alert); !errors.Is(err, sql.ErrNoRows) {
+	if err := engine.deliver(ctx, alert, sender); !errors.Is(err, sql.ErrNoRows) {
 		t.Fatalf("expired lease was not rejected immediately before send: %v", err)
 	}
 	if len(sender.messages) != 0 {

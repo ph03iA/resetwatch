@@ -80,11 +80,11 @@ func TestReenableWaitsForNewReadingAndPreservesFrozenRetry(t *testing.T) {
 	snapshot := claudeAuditSnapshot(now, now.Add(time.Hour), 100)
 	must(t, db.RecordSnapshot(ctx, snapshot, now))
 	id := alertID(snapshot, snapshot.Windows[0], config)
-	frozen, err := json.Marshal(notify.Message{Key: id, To: config.To, From: config.From,
+	frozen, err := json.Marshal(notify.Message{Key: id, To: config.Gmail.Address, From: config.Gmail.Address,
 		Provider: "claude", Window: "claude:five_hour", ResetAt: now.Add(time.Hour)})
 	must(t, err)
 	first := now.Add(-time.Minute)
-	_, err = db.db.Exec(`UPDATE alerts SET state='retry',attempts=1,first_attempt=?,payload=? WHERE id=?`, first.Unix(), string(frozen), id)
+	_, err = db.db.Exec(`UPDATE notification_alerts SET state='retry',attempts=1,first_attempt=?,payload=? WHERE id=?`, first.Unix(), string(frozen), id)
 	must(t, err)
 	must(t, db.ConfigureSetup(ctx, providerConfig("codex"), now))
 	must(t, db.ConfigureSetup(ctx, config, now))
@@ -121,7 +121,7 @@ func TestNewReadingCannotReviveTerminalOrExpiredCancelledAlerts(t *testing.T) {
 			snapshot := claudeAuditSnapshot(now, now.Add(time.Hour), 100)
 			must(t, db.RecordSnapshot(ctx, snapshot, now))
 			id := alertID(snapshot, snapshot.Windows[0], config)
-			_, err := db.db.Exec("UPDATE alerts SET "+test.edit+",last_error=? WHERE id=?", providerDisabled, id)
+			_, err := db.db.Exec("UPDATE notification_alerts SET "+test.edit+",last_error=? WHERE id=?", providerDisabled, id)
 			must(t, err)
 			must(t, db.RecordSnapshot(ctx, snapshot, now))
 			var alert Alert
@@ -170,7 +170,7 @@ func TestClaimEnforcesCurrentSelection(t *testing.T) {
 	must(t, err)
 	must(t, db.Finish(ctx, alert, "failed", "synthetic failure", due, due))
 	must(t, db.SaveConfig(ctx, providerConfig("codex")))
-	_, err = db.db.Exec("UPDATE alerts SET state='retry' WHERE id=?", alert.ID)
+	_, err = db.db.Exec("UPDATE notification_alerts SET state='retry' WHERE id=?", alert.ID)
 	must(t, err)
 	if _, err := db.Claim(ctx, due); !errors.Is(err, sql.ErrNoRows) {
 		t.Fatalf("claim bypassed current selection: %v", err)
@@ -202,9 +202,9 @@ func TestReaddressDoesNotRearmDisabledDestinationFromCache(t *testing.T) {
 	must(t, db.RecordSnapshot(ctx, snapshot, now))
 	must(t, db.ConfigureSetup(ctx, providerConfig("codex"), now))
 	must(t, db.ConfigureSetup(ctx, config, now))
-	must(t, setEmail(ctx, db, "other@example.test", config.From, now))
+	must(t, setGmail(ctx, db, "other", now))
 	must(t, db.RecordSnapshot(ctx, snapshot, now))
-	must(t, setEmail(ctx, db, config.To, config.From, now))
+	must(t, setGmail(ctx, db, "person", now))
 	assertStates(t, db, map[string]int{"cancelled": 2})
 	must(t, db.RecordSnapshot(ctx, snapshot, now))
 	assertStates(t, db, map[string]int{"pending": 1, "cancelled": 1})
@@ -236,10 +236,10 @@ func TestInvalidSetupLeavesConfigurationAndRemindersUnchanged(t *testing.T) {
 	must(t, db.ConfigureSetup(ctx, config, now))
 	must(t, db.RecordSnapshot(ctx, claudeAuditSnapshot(now, now.Add(time.Hour), 100), now))
 	for _, candidate := range []Config{
-		{Providers: "", To: config.To, From: config.From},
-		{Providers: "unknown", To: config.To, From: config.From},
-		{Providers: "codex", To: "invalid", From: config.From},
-		{Providers: "codex", To: config.To, From: "invalid"},
+		{Providers: "", Gmail: config.Gmail},
+		{Providers: "unknown", Gmail: config.Gmail},
+		{Providers: "codex"},
+		{Providers: "codex", Gmail: GmailAccount{Address: "invalid", Subject: "google-x", Credential: "cred-x"}},
 	} {
 		if err := db.ConfigureSetup(ctx, candidate, now); err == nil {
 			t.Fatalf("invalid setup accepted: %+v", candidate)
@@ -264,11 +264,11 @@ func TestFailedSetupRollsBackProviderCancellationAndBinaryChange(t *testing.T) {
 	must(t, db.RecordSnapshot(ctx, snapshot, now))
 	must(t, db.RecordSnapshot(ctx, claudeAuditSnapshot(now, now.Add(time.Hour), 100), now))
 	destination := providerConfig("codex")
-	destination.To, destination.CodexBin = "failed@example.test", "replacement-codex"
+	destination.Gmail, destination.CodexBin = gmailAccount("failed"), "replacement-codex"
 	id := alertID(snapshot, snapshot.Windows[0], destination)
-	_, err := db.db.Exec(`INSERT INTO alerts(id,provider,account_id,window_id,reset_at,recipient,sender,state,next_attempt,updated_at)
- VALUES(?,?,?,?,?,?,?,'failed',?,?)`, id, snapshot.Provider, snapshot.AccountID, snapshot.Windows[0].ID,
-		snapshot.Windows[0].ResetsAt.Unix(), destination.To, destination.From, now.Unix(), now.Unix())
+	_, err := db.db.Exec(`INSERT INTO notification_alerts(id,provider,account_id,window_id,reset_at,recipient,sender,gmail_account,state,next_attempt,updated_at)
+ VALUES(?,?,?,?,?,?,?,?,'failed',?,?)`, id, snapshot.Provider, snapshot.AccountID, snapshot.Windows[0].ID,
+		snapshot.Windows[0].ResetsAt.Unix(), destination.Gmail.Address, destination.Gmail.Address, destination.Gmail.Subject, now.Unix(), now.Unix())
 	must(t, err)
 	if err := db.ConfigureSetup(ctx, destination, now); err == nil {
 		t.Fatal("setup accepted a failed delivery destination")

@@ -169,7 +169,7 @@ func TestRetiredClaudeStatusLineIsSilent(t *testing.T) {
 func TestStatusRefreshShowsReadingsWhenOneProviderFails(t *testing.T) {
 	app, _ := testApplication(t)
 	claudeLine(t, app, "", map[string][2]int64{"five_hour": {30, time.Now().Add(time.Hour).Unix()}})
-	config := store.Config{Providers: "both", To: "p@example.test", From: "a@example.test", CodexBin: `Z:\missing\codex.exe`}
+	config := store.Config{Providers: "both", Gmail: store.GmailAccount{Address: "p@example.test", Subject: "google-p", Credential: "cred-p"}, CodexBin: `Z:\missing\codex.exe`}
 	if err := auditStateDB(t, app).ConfigureSetup(context.Background(), config, time.Now().UTC()); err != nil {
 		t.Fatal(err)
 	}

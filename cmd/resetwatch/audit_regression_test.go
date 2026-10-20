@@ -13,7 +13,7 @@ import (
 	"resetwatch/internal/store"
 )
 
-func TestEmailChangeFirstConfigurationAfterPartialClaudeReading(t *testing.T) {
+func TestGmailChangeFirstConfigurationAfterPartialClaudeReading(t *testing.T) {
 	app, _ := testApplication(t)
 	reset := time.Now().Add(time.Hour).Unix()
 	claudeLine(t, app, "session", map[string][2]int64{"five_hour": {100, reset}})
@@ -22,7 +22,7 @@ func TestEmailChangeFirstConfigurationAfterPartialClaudeReading(t *testing.T) {
 	onlyPending(t, claudeAlerts(t, app), "claude:five_hour", reset)
 }
 
-func TestEmailChangeAddressRoundTripKeepsDueClaudeReminder(t *testing.T) {
+func TestGmailChangeAddressRoundTripKeepsDueClaudeReminder(t *testing.T) {
 	app, _ := testApplication(t)
 	saveEmail(t, app, "first@example.test")
 	now := time.Now().UTC()
@@ -36,7 +36,7 @@ func TestEmailChangeAddressRoundTripKeepsDueClaudeReminder(t *testing.T) {
 	}
 }
 
-func TestEmailChangeAddressChangeDoesNotResendCompletedClaudeReset(t *testing.T) {
+func TestGmailChangeAddressChangeDoesNotResendCompletedClaudeReset(t *testing.T) {
 	app, _ := testApplication(t)
 	saveEmail(t, app, "first@example.test")
 	now := time.Now().UTC()
@@ -56,7 +56,7 @@ func TestEmailChangeAddressChangeDoesNotResendCompletedClaudeReset(t *testing.T)
 	}
 }
 
-func TestEmailChangeAddressChangeDuringDeliveryLeavesConfigurationIntact(t *testing.T) {
+func TestGmailChangeAddressChangeDuringDeliveryLeavesConfigurationIntact(t *testing.T) {
 	app, _ := testApplication(t)
 	saveEmail(t, app, "first@example.test")
 	now := time.Now().UTC()
@@ -72,7 +72,7 @@ func TestEmailChangeAddressChangeDuringDeliveryLeavesConfigurationIntact(t *test
 	if err != nil {
 		t.Fatal(err)
 	}
-	if config.To != "first@example.test" {
+	if config.Gmail.Address != "first@example.test" {
 		t.Fatal("a rejected configuration change still replaced the recipient")
 	}
 	saveEmail(t, app, "first@example.test")
@@ -90,7 +90,7 @@ func TestClaudeReadingRecoversAfterSchedulingFailure(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = writer.Close() })
-	_, err = writer.Exec(`CREATE TRIGGER reject_test_alert BEFORE INSERT ON alerts BEGIN SELECT RAISE(FAIL, 'synthetic scheduling failure'); END`)
+	_, err = writer.Exec(`CREATE TRIGGER reject_test_alert BEFORE INSERT ON notification_alerts BEGIN SELECT RAISE(FAIL, 'synthetic scheduling failure'); END`)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -130,23 +130,14 @@ func auditStateDB(t *testing.T, app *application) *store.DB {
 	return db
 }
 
-// setEmail saves email settings the way setup does, keeping the provider selection.
+// setEmail connects the Google account with this address the way gmail connect does, keeping the providers.
 func setEmail(app *application, to string) error {
 	db, err := store.Open(app.getenv("RESETWATCH_HOME"))
 	if err != nil {
 		return err
 	}
 	defer db.Close()
-	ctx := context.Background()
-	config, err := db.Config(ctx)
-	if err != nil {
-		return err
-	}
-	config.To, config.From = to, "alerts@example.test"
-	if config.Providers == "" {
-		config.Providers = "both"
-	}
-	return db.ConfigureSetup(ctx, config, time.Now().UTC())
+	return db.ConnectGmail(context.Background(), store.GmailAccount{Address: to, Subject: "google-" + to, Credential: "cred-" + to}, time.Now().UTC())
 }
 
 func saveEmail(t *testing.T, app *application, to string) {

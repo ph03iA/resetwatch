@@ -15,9 +15,9 @@ import (
 )
 
 type setupOptions struct {
-	providers, email, from, binary string
-	nonInteractive, test           bool
-	provided                       map[string]bool
+	providers, binary    string
+	nonInteractive, test bool
+	provided             map[string]bool
 }
 
 type setupState struct {
@@ -25,7 +25,8 @@ type setupState struct {
 	previous               store.Config
 	prompt                 setupPrompter
 	interactive            bool
-	newKey                 string
+	gmail                  store.GmailAccount // the account setup will activate
+	staged                 bool               // gmail's credential was saved by this run and is not active yet
 	readings               []quota.Snapshot
 	activated, emailTested bool
 }
@@ -40,9 +41,7 @@ func (a *application) setup(ctx context.Context, args []string) error {
 		return err
 	}
 	s := setupState{options: options, previous: previous, interactive: a.setupIsTerminal(options.nonInteractive)}
-	s.prompt = setupPrompter{in: a.in, out: a.out, secret: a.setupPassword, ctx: ctx}
-	restore := a.restoreSetupTerminal()
-	defer restore()
+	s.prompt = setupPrompter{in: a.in, out: a.out, ctx: ctx}
 	fmt.Fprintln(a.out, "ResetWatch setup")
 	if err := a.collectSetup(&s); err != nil {
 		return err
@@ -50,7 +49,13 @@ func (a *application) setup(ctx context.Context, args []string) error {
 	if err := a.prepareSetupProviders(ctx, &s); err != nil {
 		return err
 	}
+	if err := a.collectSetupGmail(ctx, &s); err != nil {
+		return err
+	}
 	if err := a.activateSetup(ctx, &s); err != nil {
+		if s.staged {
+			_ = a.credentials().Remove(s.gmail.Credential) // the existing connection stays as it was
+		}
 		return err
 	}
 	err = a.offerSetupTest(ctx, &s)
@@ -62,8 +67,8 @@ func (a *application) setupFlags(args []string, config store.Config) (setupOptio
 	var options setupOptions
 	flags := a.flags("setup")
 	flags.StringVar(&options.providers, "providers", config.Providers, "codex, claude, or both")
-	flags.StringVar(&options.email, "email", config.To, "recipient email address")
-	flags.StringVar(&options.from, "from", config.From, "Resend sender (default: onboarding@resend.dev)")
+	email := flags.String("email", "", "removed; reminders go to your Gmail account")
+	from := flags.String("from", "", "removed; reminders come from your Gmail account")
 	flags.StringVar(&options.binary, "codex-bin", config.CodexBin, "native Codex executable path")
 	flags.BoolVar(&options.nonInteractive, "non-interactive", false, "never ask questions")
 	flags.BoolVar(&options.test, "test-email", false, "send one labeled test after setup")
@@ -72,6 +77,9 @@ func (a *application) setupFlags(args []string, config store.Config) (setupOptio
 	}
 	options.provided = make(map[string]bool)
 	flags.Visit(func(f *flag.Flag) { options.provided[f.Name] = true })
+	if *email != "" || *from != "" {
+		return options, errAddressFlags
+	}
 	return options, noArguments(flags.Args())
 }
 
@@ -86,26 +94,8 @@ func (a *application) setupIsTerminal(nonInteractive bool) bool {
 	return ok && term.IsTerminal(int(file.Fd()))
 }
 
-func (a *application) setupPassword() (string, error) {
-	if a.setupSecret != nil {
-		return a.setupSecret()
-	}
-	file, ok := a.in.(*os.File)
-	if !ok {
-		return "", errors.New("hidden key input requires a terminal")
-	}
-	data, err := term.ReadPassword(int(file.Fd()))
-	return string(data), err
-}
-
 func (a *application) collectSetup(s *setupState) error {
 	if err := a.selectSetupProviders(s); err != nil {
-		return err
-	}
-	if err := a.collectSetupEmail(s); err != nil {
-		return err
-	}
-	if err := a.collectSetupKey(s); err != nil {
 		return err
 	}
 	return a.confirmSetupDisabling(s)
@@ -177,17 +167,4 @@ func (a *application) confirmSetupDisabling(s *setupState) error {
 		return errSetupCancelled
 	}
 	return nil
-}
-
-// Restore console echo even if a password read is interrupted while its goroutine exits.
-func (a *application) restoreSetupTerminal() func() {
-	file, ok := a.in.(*os.File)
-	if !ok {
-		return func() {}
-	}
-	state, err := term.GetState(int(file.Fd()))
-	if err != nil {
-		return func() {}
-	}
-	return func() { _ = term.Restore(int(file.Fd()), state) }
 }

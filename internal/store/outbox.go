@@ -7,14 +7,14 @@ import (
 	"resetwatch/internal/notify"
 )
 
-// FreezeMessage preserves Resend's requirement that retries with one key have identical bodies.
+// FreezeMessage keeps the first rendered message (including its MIME), so every retry sends identical content.
 func (d *DB) FreezeMessage(ctx context.Context, alert Alert, message notify.Message) (notify.Message, error) {
 	data, err := json.Marshal(message)
 	if err != nil {
 		return notify.Message{}, err
 	}
 	var payload string
-	err = d.db.QueryRowContext(ctx, `UPDATE alerts SET payload=CASE WHEN payload='' THEN ? ELSE payload END
+	err = d.db.QueryRowContext(ctx, `UPDATE notification_alerts SET payload=CASE WHEN payload='' THEN ? ELSE payload END
  WHERE id=? AND state='sending' AND attempts=? RETURNING payload`, string(data), alert.ID, alert.Attempts).Scan(&payload)
 	if err != nil {
 		return notify.Message{}, err

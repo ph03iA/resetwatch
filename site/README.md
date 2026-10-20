@@ -11,4 +11,4 @@ It shows real product output instead of mock-ups:
 
 Sections: how it works, install (Windows and macOS/Linux), the six commands, limits, privacy and terms (the MIT License). Keep the commands in `index.html` and `app.js` matching the CLI. Windows uses `.\resetwatch.exe`, macOS/Linux `./resetwatch`. Without JavaScript the Windows commands are shown; JavaScript adds the OS switch, copy buttons and fits the email frame to its content.
 
-Preview with `node tools/serve.mjs` from the repository root. Keep the site unpublished unless publishing is explicitly requested.
+Preview with `node tools/serve.mjs` from the repository root. `.github/workflows/pages.yml` publishes `dist/` to GitHub Pages on every push to `main` that changes it (repository Settings → Pages → Source must be "GitHub Actions").

@@ -1,13 +1,14 @@
 # ResetWatch website
 
-The install page is a dependency-free static site in `dist/`. It shows clone-and-build instructions, then `resetwatch setup` and `resetwatch watch`. No prebuilt downloads or hosted watcher are provided.
+A dependency-free static page in `dist/`: `index.html`, `styles.css`, `app.js`, `example-email.html`, the favicon and self-hosted fonts with their licenses. No analytics, cookies, remote fonts or third-party scripts.
 
-Without JavaScript, the Windows commands are shown. JavaScript adds the macOS/Linux tab, copying and scroll animations. Local fonts and their licenses are bundled; no analytics, remote fonts or third-party scripts are loaded.
+The page is set like a printed manual: paper and ink, one copper accent, hairline rules, Instrument Serif headings and Manrope text. It follows the visitor's light or dark setting. Keep it plain: no gradients, shadows, rounded corners, glass effects, icons, emoji, animations or card grids.
 
-Keep the default HTML instructions and both command sets in `app.js` aligned with the CLI. Windows uses `.\resetwatch.exe`; macOS/Linux uses `./resetwatch`. Command copying uses the clipboard API with a text-selection fallback.
+It shows real product output instead of mock-ups:
 
-Guided setup chooses Codex, Claude or both, asks for email and sender, reuses an existing Resend key or saves a missing key in the current folder's `.env`, and offers an optional test. Users must run watch from that folder. The default `onboarding@resend.dev` sender only reaches their Resend account email; other recipients require a verified domain. The website itself never collects credentials, connects accounts or sends email.
+- `example-email.html` is the reset email exactly as ResetWatch's own email code renders it, with example values. Regenerate it from `messageContent` in `internal/notify` if the email changes.
+- The status block is the output of the real `status` renderer, with example values.
 
-The page retains its decorative envelope, process rail, three-step installation workbook, operating notes and responsive layout. It contains no simulated account state, countdown, sample email or demo controls. Codex and Claude emails can say "is back" from a fresh reading; Codex also needs backend permission. Reset emails use the computer's time zone with a UTC reference.
+Sections: how it works, install (Windows and macOS/Linux), the six commands, limits, privacy and terms (the MIT License). Keep the commands in `index.html` and `app.js` matching the CLI. Windows uses `.\resetwatch.exe`, macOS/Linux `./resetwatch`. Without JavaScript the Windows commands are shown; JavaScript adds the OS switch, copy buttons and fits the email frame to its content.
 
-Preview locally with `node tools/serve.mjs` from the repository root. Keep the site unpublished unless publishing is explicitly requested.
+Preview with `node tools/serve.mjs` from the repository root. Keep the site unpublished unless publishing is explicitly requested.

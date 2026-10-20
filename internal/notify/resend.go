@@ -10,17 +10,12 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"strconv"
 	"strings"
 	"time"
 	"unicode"
 )
 
-const (
-	resendEndpoint = "https://api.resend.com/emails"
-	sendTimeout    = 20 * time.Second
-	maxResponse    = 64 * 1024
-)
+const resendEndpoint = "https://api.resend.com/emails"
 
 type Resend struct {
 	APIKey string
@@ -106,13 +101,6 @@ func (r Resend) client() *http.Client {
 	return &client
 }
 
-func transportError(ctx context.Context) error {
-	if errors.Is(ctx.Err(), context.Canceled) {
-		return &deliveryError{message: "email delivery canceled"}
-	}
-	return &deliveryError{message: "email service unavailable or request timed out", retryable: true}
-}
-
 func checkResponse(response *http.Response) error {
 	if response.StatusCode < 200 || response.StatusCode >= 300 {
 		return statusError(response)
@@ -131,10 +119,6 @@ func checkResponse(response *http.Response) error {
 		return &deliveryError{message: "email service returned an invalid delivery receipt", retryable: true}
 	}
 	return nil
-}
-
-func validEmailID(id string) bool {
-	return strings.TrimSpace(id) != "" && len(id) <= 256 && !strings.ContainsFunc(id, unicode.IsControl)
 }
 
 func statusError(response *http.Response) error {
@@ -163,29 +147,4 @@ func concurrentIdempotentRequest(body io.Reader) bool {
 		Name string `json:"name"`
 	}
 	return json.Unmarshal(data, &result) == nil && result.Name == "concurrent_idempotent_requests"
-}
-
-func parseRetryAfter(value string, now time.Time) time.Duration {
-	if len(value) > 128 {
-		return 0
-	}
-	seconds, err := strconv.ParseInt(strings.TrimSpace(value), 10, 64)
-	if err == nil {
-		return retryDelay(seconds)
-	}
-	date, err := http.ParseTime(value)
-	if err != nil {
-		return 0
-	}
-	return retryDelay(int64(date.Sub(now) / time.Second))
-}
-
-func retryDelay(seconds int64) time.Duration {
-	if seconds <= 0 {
-		return 0
-	}
-	if seconds > 86400 {
-		return 24 * time.Hour
-	}
-	return time.Duration(seconds) * time.Second
 }

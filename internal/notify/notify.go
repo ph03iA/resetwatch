@@ -28,6 +28,9 @@ type Message struct {
 	Test         bool
 	// CanonicalSender uses Resend sender syntax; absent in older frozen messages to preserve their retries.
 	CanonicalSender bool `json:",omitempty"`
+	// MessageID and MIME are rendered once and frozen with the reminder, so every retry sends the same email.
+	MessageID string `json:",omitempty"`
+	MIME      string `json:",omitempty"`
 }
 
 type Sender interface {

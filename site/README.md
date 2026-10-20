@@ -9,6 +9,6 @@ It shows real product output instead of mock-ups:
 - `example-email.html` is the reset email exactly as ResetWatch's own email code renders it, with example values. Regenerate it from `messageContent` in `internal/notify` if the email changes.
 - The status block is the output of the real `status` renderer, with example values.
 
-Sections: how it works, install (Windows and macOS/Linux), the six commands, limits, privacy and terms (the MIT License). Keep the commands in `index.html` and `app.js` matching the CLI. Windows uses `.\resetwatch.exe`, macOS/Linux `./resetwatch`. Without JavaScript the Windows commands are shown; JavaScript adds the OS switch, copy buttons and fits the email frame to its content.
+Sections: how it works, install (Windows and macOS/Linux, Gmail sign-in), the CLI commands, limits, privacy and terms (the MIT License). Keep the commands in `index.html` and `app.js` matching the CLI. Windows uses `.\resetwatch.exe`, macOS/Linux `./resetwatch`. Without JavaScript the Windows commands are shown; JavaScript adds the OS switch, copy buttons and fits the email frame to its content.
 
 Preview with `node tools/serve.mjs` from the repository root. `.github/workflows/pages.yml` publishes `dist/` to GitHub Pages on every push to `main` that changes it (repository Settings → Pages → Source must be "GitHub Actions").
